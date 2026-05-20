@@ -128,14 +128,42 @@ def load_data(uploaded_bytes):
         "resultat_expl":    extract_metric("RESULTAT D'EXPLOITATION"),
     }
 
+# ─── NORMALISATION HELPER ─────────────────────────────────────
+# Note technique : F_i(t,T) = Σ w_ij * m_ij(t,T) / max_{E_t}(m_ij(t,T))
+# La division est inconditionnelle — max peut être négatif (ex: rendements tous négatifs).
+# Seul cas exclu : max == 0 exactement (division par zéro).
+# Volatilité (cas inversé) : F_i = Σ w_ij * min_{E_t}(m_ij) / m_ij(t,T)
+
+def _normalise_standard(col: pd.Series) -> pd.Series:
+    """m_ij / max_{E_t}(m_ij)  — formule générale de la note technique."""
+    col = col.replace([np.inf, -np.inf], np.nan)
+    mx  = col.max()
+    if pd.isna(mx) or mx == 0:
+        return pd.Series(np.nan, index=col.index)
+    return col / mx
+
+def _normalise_volatility(col: pd.Series) -> pd.Series:
+    """min_{E_t}(m_ij) / m_ij  — formule inversée pour la volatilité."""
+    col = col.replace([np.inf, -np.inf], np.nan)
+    mn  = col.min()
+    if pd.isna(mn):
+        return pd.Series(np.nan, index=col.index)
+    # avoid division by zero for any individual m_ij == 0
+    return (mn / col.replace(0, np.nan))
+
 # ─── FACTOR FUNCTIONS ─────────────────────────────────────────
 
 def compute_value_factor(data, year, weights):
+    """
+    F_value(t,T) = Σ w_j * m_j(t,T) / max_{E_t}(m_j(t,T))
+    Métriques : Book/Price · EPS/Price · FCF/Price · CA/Price
+    """
     moy = data["moyenne_cours"]
     nb  = data["nb_titres"]
     year_row = moy[moy['Date'] == year]
     if year_row.empty:
         return None
+
     detail = {}
     for t in data["tickers"]:
         if t not in nb:
@@ -160,61 +188,99 @@ def compute_value_factor(data, year, weights):
         }
     if not detail:
         return None
-    df = pd.DataFrame(detail).T
+
+    df      = pd.DataFrame(detail).T
     metrics = ["Book/Price","EPS/Price","FCF/Price","CA/Price"]
-    # normalise: m / max(m)
-    norm = {}
-    for m in metrics:
-        col = df[m].replace([np.inf,-np.inf], np.nan)
-        mx  = col.max()
-        norm[m] = col/mx if (pd.notna(mx) and mx > 0) else col*0
-    norm_df = pd.DataFrame(norm)
+
+    # Étape 1 : normalisation stricte m_ij / max_{E_t}(m_ij)
+    norm_df = pd.DataFrame({m: _normalise_standard(df[m]) for m in metrics})
+
+    # Étape 2 : score pondéré F_i = Σ w_j * (m_j / max)
     score = sum(norm_df[m].fillna(0) * weights.get(m, 0) for m in metrics)
-    res = pd.DataFrame({"Score Value": score, **{m: df[m] for m in metrics},
-                        "Cours moy": df["Cours moy"],
-                        "Cap. mché (MFCFA)": df["Cap. mché (MFCFA)"]})
+
+    res = pd.DataFrame({
+        "Score Value": score,
+        **{m: df[m] for m in metrics},
+        "Cours moy": df["Cours moy"],
+        "Cap. mché (MFCFA)": df["Cap. mché (MFCFA)"],
+    })
     return res.dropna(subset=["Score Value"]).sort_values("Score Value", ascending=False)
 
+
 def compute_momentum_factor(data, end_date, weights):
-    returns = data["cours"].pct_change().dropna(how='all')
+    """
+    F_mom(t,T) = Σ w_h * rdt_h(t,T) / max_{E_t}(rdt_h(t,T))
+    6 horizons : J · 5J · 21J · 63J · 126J · 252J
+    """
+    returns = data["cours"].apply(pd.to_numeric, errors='coerce').pct_change().dropna(how='all')
     try:
         ed = pd.to_datetime(end_date)
     except Exception:
         ed = returns.index[-1]
     sub = returns[returns.index <= ed]
-    horizons = {"Journalier":1,"Hebdo":5,"Mensuel":21,"Trimestriel":63,"Semestriel":126,"Annuel":252}
-    mom = {h: sub.tail(n).mean() for h, n in horizons.items()}
-    mom_df = pd.DataFrame(mom).replace([np.inf,-np.inf], np.nan)
-    norm = {}
-    for h in horizons:
-        col = mom_df[h].dropna()
-        mx  = col.max()
-        norm[h] = mom_df[h]/mx if (pd.notna(mx) and mx > 0) else mom_df[h]*0
-    norm_df = pd.DataFrame(norm)
+
+    horizons = {
+        "Journalier":  1,
+        "Hebdo":       5,
+        "Mensuel":     21,
+        "Trimestriel": 63,
+        "Semestriel":  126,
+        "Annuel":      252,
+    }
+    # m_ij = rendement moyen sur l'horizon h pour le titre T
+    mom_df = pd.DataFrame(
+        {h: sub.tail(n).mean(numeric_only=True) for h, n in horizons.items()}
+    ).replace([np.inf, -np.inf], np.nan)
+
+    # Normalisation standard : m_ij / max_{E_t}(m_ij)
+    norm_df = pd.DataFrame({h: _normalise_standard(mom_df[h]) for h in horizons})
+
+    # Score pondéré
     score = sum(norm_df[h].fillna(0) * weights.get(h, 1/6) for h in horizons)
-    res = pd.DataFrame({"Score Momentum": score,
-                        **{f"Rdt {h}": mom_df[h] for h in horizons}})
+
+    res = pd.DataFrame({
+        "Score Momentum": score,
+        **{f"Rdt {h}": mom_df[h] for h in horizons},
+    })
     return res.dropna(subset=["Score Momentum"]).sort_values("Score Momentum", ascending=False)
 
+
 def compute_volatility_factor(data, end_date, window=252):
-    returns = data["cours"].pct_change().dropna(how='all')
+    """
+    F_vol(t,T) = w * min_{E_t}(σ) / σ(T)
+    Cas particulier inversé — titre le moins volatile reçoit le score le plus élevé.
+    """
+    returns = data["cours"].apply(pd.to_numeric, errors='coerce').pct_change().dropna(how='all')
     try:
         ed = pd.to_datetime(end_date)
     except Exception:
         ed = returns.index[-1]
-    vol = returns[returns.index <= ed].tail(window).std().dropna()
-    min_v = vol.min()
-    score = (min_v / vol).replace([np.inf,-np.inf], np.nan).dropna()
-    return pd.DataFrame({"Score Volatilité": score, "Écart-type": vol}
-                        ).sort_values("Score Volatilité", ascending=False)
+
+    # m_ij = écart-type des rendements sur la fenêtre
+    vol = returns[returns.index <= ed].tail(window).std(numeric_only=True).dropna()
+
+    # F_vol = min_{E_t}(σ) / σ(T)  — w = 1 (métrique unique)
+    score = _normalise_volatility(vol).replace([np.inf, -np.inf], np.nan).dropna()
+
+    return pd.DataFrame({
+        "Score Volatilité": score,
+        "Écart-type σ":     vol,
+        "σ annualisée":     vol * np.sqrt(252),
+    }).sort_values("Score Volatilité", ascending=False)
+
 
 def compute_dividend_factor(data, year):
+    """
+    F_div(t,T) = w * DY(t,T) / max_{E_t}(DY(t,T))
+    Métrique unique : Dividend Yield = Dividende / Cours moyen annuel
+    """
     div = data["dividendes"]
     moy = data["moyenne_cours"]
     dr  = div[div['Date'] == year]
     mr  = moy[moy['Date'] == year]
     if dr.empty or mr.empty:
         return None
+
     yields = {}
     for t in data["tickers"]:
         if t not in dr.columns or t not in mr.columns:
@@ -222,22 +288,35 @@ def compute_dividend_factor(data, year):
         d = dr[t].values[0]
         p = mr[t].values[0]
         if pd.notna(d) and pd.notna(p) and p > 0:
-            yields[t] = d/p
+            yields[t] = float(d) / float(p)
     if not yields:
         return None
-    s = pd.Series(yields)
-    mx = s.max()
-    score = s/mx if mx > 0 else s
-    return pd.DataFrame({"Score Dividende": score, "Dividend Yield": s}
-                        ).sort_values("Score Dividende", ascending=False)
+
+    s  = pd.Series(yields)
+    # Normalisation standard : DY / max_{E_t}(DY)
+    score = _normalise_standard(s)
+
+    return pd.DataFrame({
+        "Score Dividende": score,
+        "Dividend Yield":  s,
+    }).sort_values("Score Dividende", ascending=False)
+
 
 def compute_liquidity_factor(data):
+    """
+    F_liq(t,T) = w * Vol(T) / max_{E_t}(Vol)
+    Métrique unique : volume moyen transigé sur l'historique complet.
+    """
     vol_df = data["volumes"].apply(pd.to_numeric, errors='coerce')
-    avg = vol_df.mean(numeric_only=True).replace([np.inf,-np.inf], np.nan).dropna()
-    mx  = avg.max()
-    score = avg/mx if mx > 0 else avg
-    return pd.DataFrame({"Score Liquidité": score, "Volume moyen": avg}
-                        ).sort_values("Score Liquidité", ascending=False)
+    avg    = vol_df.mean(numeric_only=True).replace([np.inf, -np.inf], np.nan).dropna()
+
+    # Normalisation standard : Vol / max_{E_t}(Vol)
+    score = _normalise_standard(avg)
+
+    return pd.DataFrame({
+        "Score Liquidité": score,
+        "Volume moyen":    avg,
+    }).sort_values("Score Liquidité", ascending=False)
 
 def compute_multifactor(factor_results, betas):
     all_t = set()
