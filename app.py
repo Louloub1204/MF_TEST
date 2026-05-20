@@ -407,9 +407,13 @@ def compute_multifactor(factor_results, betas):
         mf = mf.add(df[sc[0]] * betas.get(fname, 0), fill_value=0)
     return mf.sort_values(ascending=False)
 
-def compute_portfolio_weights(mf, excluded=None):
-    if excluded:
-        mf = mf.drop(labels=excluded, errors='ignore')
+def compute_portfolio_weights(mf, included=None):
+    """
+    α(T,t) = (n − r(T,t) + 1) / (n·(n+1)/2)
+    Si included est fourni, seuls ces titres entrent dans le portefeuille.
+    """
+    if included:
+        mf = mf.reindex(included).dropna()
     n = len(mf)
     if n == 0:
         return pd.Series(dtype=float)
@@ -472,17 +476,43 @@ with st.sidebar:
         selected_year = st.selectbox("📅 Année (Value / Dividende)", avail_years)
         date_ref = st.date_input("📅 Date ref. (Momentum / Vol.)", value=data["cours"].index[-1].date())
         st.markdown("---")
-        st.markdown("**⚖️ Poids des facteurs (β_i)**")
-        b_val = st.slider("💰 Value",      0.0, 1.0, 0.20, 0.01)
-        b_mom = st.slider("🚀 Momentum",   0.0, 1.0, 0.20, 0.01)
-        b_vol = st.slider("📉 Volatilité", 0.0, 1.0, 0.20, 0.01)
-        b_div = st.slider("💸 Dividende",  0.0, 1.0, 0.20, 0.01)
-        b_liq = st.slider("💧 Liquidité",  0.0, 1.0, 0.20, 0.01)
-        bs = round(b_val+b_mom+b_vol+b_div+b_liq, 4)
-        st.success(f"✅ Σβ = {bs:.2f}") if abs(bs-1.0) <= 0.01 else st.warning(f"⚠️ Σβ = {bs:.2f}")
-        betas = {"Value":b_val,"Momentum":b_mom,"Volatilité":b_vol,"Dividende":b_div,"Liquidité":b_liq}
+        st.markdown("**⚖️ Poids des facteurs β_i**")
+        st.caption("Calibrez chaque facteur · Σβ doit = 1.0")
+
+        b_val = st.slider("💰 Value",      0.0, 1.0,
+                          st.session_state.get("b_val", 0.20), 0.01, key="b_val")
+        b_mom = st.slider("🚀 Momentum",   0.0, 1.0,
+                          st.session_state.get("b_mom", 0.20), 0.01, key="b_mom")
+        b_vol = st.slider("📉 Volatilité", 0.0, 1.0,
+                          st.session_state.get("b_vol", 0.20), 0.01, key="b_vol")
+        b_div = st.slider("💸 Dividende",  0.0, 1.0,
+                          st.session_state.get("b_div", 0.20), 0.01, key="b_div")
+        b_liq = st.slider("💧 Liquidité",  0.0, 1.0,
+                          st.session_state.get("b_liq", 0.20), 0.01, key="b_liq")
+
+        bs = round(b_val + b_mom + b_vol + b_div + b_liq, 4)
+        if abs(bs - 1.0) <= 0.01:
+            st.success(f"✅ Σβ = {bs:.2f}")
+        else:
+            st.warning(f"⚠️ Σβ = {bs:.2f} ≠ 1.0")
+
+        if st.button("⚖️ Égaliser (20% chacun)"):
+            for k in ["b_val","b_mom","b_vol","b_div","b_liq"]:
+                st.session_state[k] = 0.20
+            st.rerun()
+
+        betas = {
+            "Value":      b_val,
+            "Momentum":   b_mom,
+            "Volatilité": b_vol,
+            "Dividende":  b_div,
+            "Liquidité":  b_liq,
+        }
+        st.session_state.betas = betas
     else:
-        selected_year, date_ref, betas = 2024, None, {}
+        selected_year, date_ref = 2024, None
+        betas = st.session_state.get("betas",
+                {"Value":0.20,"Momentum":0.20,"Volatilité":0.20,"Dividende":0.20,"Liquidité":0.20})
 
     st.markdown("---")
     st.markdown("""<div style='font-size:10px;color:#475569;line-height:1.6;'>
@@ -773,50 +803,79 @@ with t5:
 with t6:
     st.markdown("<span class='pill'>Étape 2</span><p class='sh'>Indice Multifactoriel</p>", unsafe_allow_html=True)
     st.markdown("""<div class='fbox'>MF(t,T) = Σ_{i=1}^{5} β_i · F_i(t,T) &nbsp;·&nbsp; Σ β_i = 1<br>
-    Ajustez les β_i dans la barre latérale gauche</div>""", unsafe_allow_html=True)
+    Calibrez les β_i dans la barre latérale ← puis cliquez Calculer</div>""", unsafe_allow_html=True)
+
+    # Lire les betas depuis session_state (toujours à jour)
+    betas_mf = st.session_state.get("betas",
+               {"Value":0.20,"Momentum":0.20,"Volatilité":0.20,"Dividende":0.20,"Liquidité":0.20})
 
     computed = list(fr.keys())
+
+    # Affichage live des β actuels
+    st.markdown("**β actifs (modifiables dans la barre latérale ←)**")
+    CLRS = {"Value":"#3b82f6","Momentum":"#8b5cf6","Volatilité":"#ef4444",
+            "Dividende":"#f59e0b","Liquidité":"#06b6d4"}
+    ICONS = {"Value":"💰","Momentum":"🚀","Volatilité":"📉","Dividende":"💸","Liquidité":"💧"}
+    bc = st.columns(5)
+    for i, (fname, beta) in enumerate(betas_mf.items()):
+        status = "✓ calculé" if fname in computed else "✗ non calculé"
+        bc[i].metric(
+            label=f"{ICONS.get(fname,'')} β {fname}",
+            value=f"{beta:.2f}",
+            delta=status
+        )
+
+    bs_mf = round(sum(betas_mf.values()), 4)
+    if abs(bs_mf - 1.0) > 0.01:
+        st.warning(f"⚠️ Σβ = {bs_mf:.2f} ≠ 1.0 — ajustez les curseurs dans la barre latérale")
+
+    st.markdown("---")
+
     if not computed:
-        st.info("👈 Calculez au moins un facteur avant de continuer.")
+        st.info("👈 Calculez au moins un facteur (onglets 💰 🚀 📉 💸 💧) avant de continuer.")
     else:
-        st.success(f"Facteurs disponibles : {', '.join(computed)}")
-        bc = st.columns(5)
-        for i,(fname,beta) in enumerate(betas.items()):
-            bc[i].metric(f"β {fname}", f"{beta:.2f}", "✓" if fname in computed else "✗")
+        st.success(f"Facteurs calculés : {', '.join(computed)}")
 
         if st.button("🔢 Calculer l'Indice MF", type="primary"):
-            mf = compute_multifactor(fr, betas)
+            mf = compute_multifactor(fr, betas_mf)
             st.session_state.mf_scores = mf
-            st.success(f"✅ {len(mf)} titres classés")
+            st.success(f"✅ {len(mf)} titres classés · β = {betas_mf}")
 
         if st.session_state.mf_scores is not None:
             mf = st.session_state.mf_scores
             st.markdown("---")
             st.plotly_chart(score_bar(mf, "#3b82f6", height=380), width="stretch")
 
-            # Stacked contribution
+            # Décomposition factorielle
             st.markdown("**Décomposition factorielle — Top 15**")
             top15 = mf.head(15).index
-            clrs = {"Value":"#3b82f6","Momentum":"#8b5cf6","Volatilité":"#ef4444",
-                    "Dividende":"#f59e0b","Liquidité":"#06b6d4"}
             fig_s = go.Figure()
             for fname in computed:
                 sc = [c for c in fr[fname].columns if "Score" in c][0]
-                vals = [fr[fname].loc[t,sc]*betas.get(fname,0) if t in fr[fname].index else 0 for t in top15]
-                fig_s.add_trace(go.Bar(name=fname,x=list(top15),y=vals,
-                                       marker_color=clrs.get(fname,"#64748b"),opacity=0.85))
-            fig_s.update_layout(barmode="stack",**{**PLOT_LAYOUT,"height":340,
-                                "legend":dict(orientation="h",y=1.08,bgcolor="rgba(0,0,0,0)"),
-                                "margin":dict(l=10,r=10,t=50,b=50)})
+                vals = [fr[fname].loc[t, sc] * betas_mf.get(fname, 0)
+                        if t in fr[fname].index else 0 for t in top15]
+                fig_s.add_trace(go.Bar(
+                    name=f"{ICONS.get(fname,'')} {fname}",
+                    x=list(top15), y=vals,
+                    marker_color=CLRS.get(fname, "#64748b"), opacity=0.85
+                ))
+            fig_s.update_layout(
+                barmode="stack", **{**PLOT_LAYOUT, "height": 340,
+                "legend": dict(orientation="h", y=1.08, bgcolor="rgba(0,0,0,0)"),
+                "margin": dict(l=10, r=10, t=50, b=50)}
+            )
             st.plotly_chart(fig_s, width="stretch")
 
             tbl = mf.reset_index()
-            tbl.columns = ["Ticker","Score MF"]
-            tbl.insert(0,"Rang",range(1,len(tbl)+1))
+            tbl.columns = ["Ticker", "Score MF"]
+            tbl.insert(0, "Rang", range(1, len(tbl) + 1))
+            tbl["Score MF"] = tbl["Score MF"].round(6)
             st.dataframe(tbl, width="stretch", hide_index=True)
 
-            buf=io.BytesIO(); tbl.to_excel(buf,index=False)
-            st.download_button("⬇️ Exporter classement MF", buf.getvalue(), "classement_MF.xlsx",
+            buf = io.BytesIO()
+            tbl.to_excel(buf, index=False)
+            st.download_button("⬇️ Exporter classement MF", buf.getvalue(),
+                               "classement_MF.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # ══ PORTEFEUILLE ═══════════════════════════════════════════════
@@ -829,78 +888,121 @@ with t7:
         st.info("👈 Calculez d'abord l'Indice MF (onglet 🔢).")
     else:
         mf = st.session_state.mf_scores
-        p1,p2 = st.columns([2,1])
+        all_tickers = mf.index.tolist()
+
+        p1, p2 = st.columns([3, 1])
         with p1:
-            excluded = st.multiselect("🚫 Exclure des titres", mf.index.tolist())
+            included = st.multiselect(
+                "✅ Titres à inclure dans le portefeuille",
+                options=all_tickers,
+                default=all_tickers,          # tous inclus par défaut
+                help="Sélectionnez uniquement les titres que vous souhaitez dans le portefeuille cible. "
+                     "Les pondérations α sont recalculées sur cet univers restreint."
+            )
         with p2:
-            top_n = st.number_input("🔝 Top N (0 = tous)", 0, len(mf), 0)
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("↩️ Tout sélectionner"):
+                st.session_state["ptf_included"] = all_tickers
+                st.rerun()
 
-        if st.button("📂 Construire le portefeuille", type="primary"):
-            pw = compute_portfolio_weights(mf, excluded)
-            if top_n > 0:
-                pw = pw.head(top_n); pw = pw / pw.sum()
-            st.session_state.pw = pw
-            st.success(f"✅ {len(pw)} titres · Σα = {pw.sum():.6f}")
+        n_included = len(included)
+        n_total    = len(all_tickers)
+        if n_included == 0:
+            st.warning("⚠️ Sélectionnez au moins un titre.")
+        else:
+            if n_included < n_total:
+                st.info(f"ℹ️ {n_included} titres inclus sur {n_total} · "
+                        f"{n_total - n_included} exclus de l'univers")
+            else:
+                st.success(f"✅ Univers complet : {n_included} titres")
 
-        if st.session_state.pw is not None:
-            pw = st.session_state.pw
-            k1,k2,k3,k4 = st.columns(4)
+            if st.button("📂 Construire le portefeuille", type="primary"):
+                pw = compute_portfolio_weights(mf, included=included)
+                st.session_state.pw = pw
+                st.session_state.pw_included = included
+                st.success(f"✅ {len(pw)} titres · Σα = {pw.sum():.6f}")
+
+        if st.session_state.pw is not None and n_included > 0:
+            pw       = st.session_state.pw
+            inc_used = st.session_state.get("pw_included", all_tickers)
+
+            k1, k2, k3, k4 = st.columns(4)
             k1.metric("Nb titres", len(pw))
             k2.metric("Poids max", f"{pw.max()*100:.2f}%")
             k3.metric("Poids min", f"{pw.min()*100:.2f}%")
-            k4.metric("HHI", f"{(pw**2).sum():.4f}")
+            k4.metric("HHI concentration", f"{(pw**2).sum():.4f}")
             st.markdown("---")
 
-            pl,pr = st.columns(2)
+            pl, pr = st.columns(2)
             with pl:
                 st.markdown("**Répartition**")
                 dpw = pw.copy()
                 if len(dpw) > 15:
-                    dpw = pd.concat([dpw.head(15), pd.Series({"Autres": dpw.iloc[15:].sum()})])
-                fig_p = go.Figure(go.Pie(labels=dpw.index, values=dpw.values, hole=0.45,
-                                         textfont=dict(size=10),
-                                         marker=dict(line=dict(color="#0b0f1a",width=2)),
-                                         hovertemplate="<b>%{label}</b><br>%{percent:.2%}<extra></extra>"))
-                fig_p.update_layout(paper_bgcolor="rgba(0,0,0,0)", height=380,
-                                    font=dict(color="#94a3b8",family="JetBrains Mono"),
-                                    legend=dict(font=dict(size=10),bgcolor="rgba(0,0,0,0)"),
-                                    margin=dict(l=10,r=10,t=20,b=10),
-                                    annotations=[dict(text=f"<b>{len(pw)}</b><br>titres",
-                                                      x=0.5,y=0.5,font_size=14,showarrow=False,
-                                                      font=dict(color="#94a3b8"))])
+                    dpw = pd.concat([dpw.head(15),
+                                     pd.Series({"Autres": dpw.iloc[15:].sum()})])
+                fig_p = go.Figure(go.Pie(
+                    labels=dpw.index, values=dpw.values, hole=0.45,
+                    textfont=dict(size=10),
+                    marker=dict(line=dict(color="#0b0f1a", width=2)),
+                    hovertemplate="<b>%{label}</b><br>%{percent:.2%}<extra></extra>"
+                ))
+                fig_p.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)", height=380,
+                    font=dict(color="#94a3b8", family="JetBrains Mono"),
+                    legend=dict(font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
+                    margin=dict(l=10, r=10, t=20, b=10),
+                    annotations=[dict(text=f"<b>{len(pw)}</b><br>titres",
+                                      x=0.5, y=0.5, font_size=14, showarrow=False,
+                                      font=dict(color="#94a3b8"))]
+                )
                 st.plotly_chart(fig_p, width="stretch")
 
             with pr:
                 st.markdown("**Poids — Top 20**")
                 pt = pw.head(20)
-                fig_h = go.Figure(go.Bar(x=pt.values*100, y=pt.index, orientation="h",
-                                         marker=dict(color=np.linspace(0.9,0.2,len(pt)),
-                                                     colorscale="Blues"),
-                                         text=[f"{v*100:.2f}%" for v in pt.values],
-                                         textposition="outside", textfont=dict(size=9,color="#94a3b8")))
-                fig_h.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
-                                    height=440, font=dict(color="#94a3b8",family="JetBrains Mono"),
-                                    margin=dict(l=10,r=70,t=20,b=30),
-                                    xaxis=dict(gridcolor="#1e2d45",ticksuffix="%"),
-                                    yaxis=dict(autorange="reversed"))
+                fig_h = go.Figure(go.Bar(
+                    x=pt.values * 100, y=pt.index, orientation="h",
+                    marker=dict(color=np.linspace(0.9, 0.2, len(pt)),
+                                colorscale="Blues"),
+                    text=[f"{v*100:.2f}%" for v in pt.values],
+                    textposition="outside",
+                    textfont=dict(size=9, color="#94a3b8")
+                ))
+                fig_h.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    height=440, font=dict(color="#94a3b8", family="JetBrains Mono"),
+                    margin=dict(l=10, r=70, t=20, b=30),
+                    xaxis=dict(gridcolor="#1e2d45", ticksuffix="%"),
+                    yaxis=dict(autorange="reversed")
+                )
                 st.plotly_chart(fig_h, width="stretch")
 
-            ranks = mf.drop(labels=excluded, errors='ignore').rank(ascending=False, method='min')
+            # Table d'allocation complète
+            ranks_inc = mf.reindex(inc_used).dropna().rank(ascending=False, method='min')
             alloc = pd.DataFrame({
-                "Ticker": pw.index,
-                "Rang r(T,t)": ranks.loc[pw.index].astype(int),
-                "Score MF": mf.loc[pw.index].round(6),
+                "Ticker":      pw.index,
+                "Rang r(T,t)": ranks_inc.loc[pw.index].astype(int),
+                "Score MF":    mf.loc[pw.index].round(6),
                 "Poids α(T,t)": pw.values,
-                "Poids (%)": (pw.values*100).round(4),
+                "Poids (%)":   (pw.values * 100).round(4),
             }).reset_index(drop=True)
-            st.dataframe(alloc.style.format({"Score MF":"{:.6f}","Poids α(T,t)":"{:.6f}","Poids (%)":"{:.4f}%"}
-                         ).bar(subset=["Poids (%)"],color=["#1e3a5f","#3b82f6"]),
-                         width="stretch", hide_index=True)
 
-            buf = io.BytesIO(); alloc.to_excel(buf, index=False)
-            st.download_button("⬇️ Exporter le portefeuille (Excel)", buf.getvalue(),
-                               "portefeuille_BRVM.xlsx",
-                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.dataframe(
+                alloc.style.format({
+                    "Score MF":     "{:.6f}",
+                    "Poids α(T,t)": "{:.6f}",
+                    "Poids (%)":    "{:.4f}%"
+                }).bar(subset=["Poids (%)"], color=["#1e3a5f", "#3b82f6"]),
+                width="stretch", hide_index=True
+            )
+
+            buf = io.BytesIO()
+            alloc.to_excel(buf, index=False)
+            st.download_button(
+                "⬇️ Exporter le portefeuille (Excel)", buf.getvalue(),
+                "portefeuille_BRVM.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
 # ══ DONNÉES ════════════════════════════════════════════════════
 with t8:
