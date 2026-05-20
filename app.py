@@ -2,1030 +2,676 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
 import io
+import warnings
+warnings.filterwarnings("ignore")
 
-# ─────────────────────────────────────────────
-# PAGE CONFIG
-# ─────────────────────────────────────────────
-st.set_page_config(
-    page_title="CGF Gestion · BRVM Multifactorial",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+st.set_page_config(page_title="CGF Gestion · SMF BRVM", page_icon="📊",
+                   layout="wide", initial_sidebar_state="expanded")
 
-# ─────────────────────────────────────────────
-# CUSTOM CSS  — refined dark finance aesthetic
-# ─────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
-
-:root {
-    --bg:        #0b0f1a;
-    --surface:   #111827;
-    --card:      #161d2e;
-    --border:    #1e2d45;
-    --accent:    #3b82f6;
-    --accent2:   #06b6d4;
-    --gold:      #f59e0b;
-    --green:     #10b981;
-    --red:       #ef4444;
-    --text:      #e2e8f0;
-    --muted:     #64748b;
-    --font-head: 'Syne', sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
-}
-
-html, body, [class*="css"] {
-    background-color: var(--bg);
-    color: var(--text);
-    font-family: var(--font-mono);
-}
-
-/* Sidebar */
-[data-testid="stSidebar"] {
-    background: var(--surface) !important;
-    border-right: 1px solid var(--border);
-}
-[data-testid="stSidebar"] * { font-family: var(--font-mono) !important; }
-
-/* Headers */
-h1, h2, h3 { font-family: var(--font-head) !important; letter-spacing: -0.02em; }
-
-/* Metric boxes */
-[data-testid="metric-container"] {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 16px;
-}
-[data-testid="metric-container"] label { color: var(--muted) !important; font-size: 11px !important; text-transform: uppercase; letter-spacing: 0.1em; }
-[data-testid="metric-container"] [data-testid="stMetricValue"] { color: var(--accent) !important; font-family: var(--font-mono) !important; }
-
-/* Dataframe */
-[data-testid="stDataFrame"] { border: 1px solid var(--border); border-radius: 8px; }
-
-/* Buttons */
-.stButton > button {
-    background: var(--accent) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 6px !important;
-    font-family: var(--font-mono) !important;
-    font-weight: 500 !important;
-    letter-spacing: 0.04em;
-    transition: all .2s;
-}
-.stButton > button:hover { background: var(--accent2) !important; transform: translateY(-1px); }
-
-/* Tabs */
-.stTabs [data-baseweb="tab-list"] { background: var(--surface); border-bottom: 1px solid var(--border); gap: 0; }
-.stTabs [data-baseweb="tab"] { color: var(--muted) !important; font-family: var(--font-mono) !important; font-size: 13px; padding: 10px 20px; }
-.stTabs [aria-selected="true"] { color: var(--accent) !important; border-bottom: 2px solid var(--accent) !important; }
-
-/* Slider */
-.stSlider [data-baseweb="slider"] div { background: var(--accent) !important; }
-
-/* Input */
-.stNumberInput input, .stTextInput input {
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    color: var(--text) !important;
-    font-family: var(--font-mono) !important;
-    border-radius: 6px !important;
-}
-
-/* Select */
-.stSelectbox [data-baseweb="select"] {
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 6px !important;
-}
-
-/* Expander */
-.streamlit-expanderHeader {
-    background: var(--card) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 6px !important;
-    color: var(--text) !important;
-    font-family: var(--font-mono) !important;
-}
-
-/* Info/warning boxes */
-.stInfo { background: rgba(59,130,246,0.1) !important; border-left: 3px solid var(--accent) !important; }
-.stSuccess { background: rgba(16,185,129,0.1) !important; border-left: 3px solid var(--green) !important; }
-.stWarning { background: rgba(245,158,11,0.1) !important; border-left: 3px solid var(--gold) !important; }
-
-/* Divider */
-hr { border-color: var(--border) !important; }
-
-/* Section pill badge */
-.pill {
-    display: inline-block;
-    padding: 2px 10px;
-    border-radius: 20px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    background: rgba(59,130,246,0.15);
-    color: var(--accent);
-    border: 1px solid rgba(59,130,246,0.3);
-    margin-bottom: 8px;
-}
-.section-header {
-    font-family: 'Syne', sans-serif;
-    font-size: 22px;
-    font-weight: 700;
-    color: #e2e8f0;
-    margin: 0 0 4px 0;
-}
-.section-sub {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    color: #64748b;
-    margin-bottom: 20px;
-}
-.formula-box {
-    background: #0d1526;
-    border: 1px solid #1e3a5f;
-    border-radius: 8px;
-    padding: 16px 20px;
-    margin: 12px 0;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    color: #93c5fd;
-}
-.rank-badge {
-    display: inline-block;
-    width: 28px; height: 28px;
-    border-radius: 50%;
-    background: var(--accent);
-    color: white;
-    font-size: 12px;
-    font-weight: 700;
-    text-align: center;
-    line-height: 28px;
-}
+:root{--bg:#0b0f1a;--surface:#111827;--card:#161d2e;--border:#1e2d45;
+      --accent:#3b82f6;--accent2:#06b6d4;--gold:#f59e0b;--green:#10b981;
+      --red:#ef4444;--text:#e2e8f0;--muted:#64748b;}
+html,body,[class*="css"]{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;}
+[data-testid="stSidebar"]{background:var(--surface)!important;border-right:1px solid var(--border);}
+h1,h2,h3{font-family:'Syne',sans-serif!important;}
+[data-testid="metric-container"]{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;}
+[data-testid="metric-container"] label{color:var(--muted)!important;font-size:11px!important;text-transform:uppercase;}
+[data-testid="metric-container"] [data-testid="stMetricValue"]{color:var(--accent)!important;font-family:'JetBrains Mono'!important;}
+.stButton>button{background:var(--accent)!important;color:white!important;border:none!important;border-radius:6px!important;transition:all .2s;}
+.stButton>button:hover{background:var(--accent2)!important;transform:translateY(-1px);}
+.stTabs [data-baseweb="tab-list"]{background:var(--surface);border-bottom:1px solid var(--border);}
+.stTabs [data-baseweb="tab"]{color:var(--muted)!important;font-family:'JetBrains Mono'!important;font-size:13px;padding:10px 18px;}
+.stTabs [aria-selected="true"]{color:var(--accent)!important;border-bottom:2px solid var(--accent)!important;}
+.stInfo{background:rgba(59,130,246,.1)!important;border-left:3px solid var(--accent)!important;}
+.stSuccess{background:rgba(16,185,129,.1)!important;border-left:3px solid var(--green)!important;}
+.stWarning{background:rgba(245,158,11,.1)!important;border-left:3px solid var(--gold)!important;}
+hr{border-color:var(--border)!important;}
+.pill{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;
+      letter-spacing:.08em;text-transform:uppercase;background:rgba(59,130,246,.15);
+      color:var(--accent);border:1px solid rgba(59,130,246,.3);margin-bottom:8px;}
+.sh{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:#e2e8f0;margin:0 0 4px 0;}
+.ss{font-family:'JetBrains Mono',monospace;font-size:12px;color:#64748b;margin-bottom:20px;}
+.fbox{background:#0d1526;border:1px solid #1e3a5f;border-radius:8px;padding:14px 18px;
+      margin:10px 0;font-family:'JetBrains Mono',monospace;font-size:13px;color:#93c5fd;}
 </style>
 """, unsafe_allow_html=True)
 
+# ─── CONSTANTS ────────────────────────────────────────────────
+BENCH_COLS = ['Unnamed: 0','ANNEE','JOUR','Unnamed: 62','.BRVMCI','BRVM30',
+              'BRVM PREST','BRVM-PRINC','BRVM-C TR','BRVM-CB','BRVM-CD',
+              'BRVM-ENER','BRVM-SFIN','BRVM-SPUB']
 
-# ─────────────────────────────────────────────
-# CONSTANTS — factor definitions from the note
-# ─────────────────────────────────────────────
+# ─── DATA LOADING ─────────────────────────────────────────────
+@st.cache_data
+def load_data(uploaded_bytes):
+    xl = pd.ExcelFile(io.BytesIO(uploaded_bytes))
 
-FACTOR_DEFINITIONS = {
-    "Value": {
-        "metrics": ["Book-to-Price (B/P)", "EPS/Price (P/E inv.)", "FCF/Price", "Sales/Price", "EBIT/EV"],
-        "weights": [0.10, 0.50, 0.20, 0.10, 0.10],
-        "invert": False,
-        "color": "#3b82f6",
-        "icon": "💰",
-        "description": "Valorisation relative au cours de marché",
-    },
-    "Qualité": {
-        "metrics": ["Levier financier", "Ratio qualité résultat", "ROA", "ROE"],
-        "weights": [0.25, 0.25, 0.25, 0.25],
-        "invert": False,
-        "color": "#10b981",
-        "icon": "🏅",
-        "description": "Solidité des fondamentaux",
-    },
-    "Dividende": {
-        "metrics": ["Dividend Yield"],
-        "weights": [1.0],
-        "invert": False,
-        "color": "#f59e0b",
-        "icon": "💸",
-        "description": "Rendement du dividende",
-    },
-    "Volatilité": {
-        "metrics": ["Écart-type des rendements"],
-        "weights": [1.0],
-        "invert": True,
-        "color": "#ef4444",
-        "icon": "📉",
-        "description": "Faible volatilité (min/métrique)",
-    },
-    "Momentum": {
-        "metrics": ["Rdt moyen journalier", "Rdt moyen hebdo", "Rdt moyen mensuel",
-                    "Rdt moyen trimestriel", "Rdt moyen semestriel", "Rdt moyen annuel"],
-        "weights": [1/6]*6,
-        "invert": False,
-        "color": "#8b5cf6",
-        "icon": "🚀",
-        "description": "Dynamique des cours (6 horizons)",
-    },
-    "Liquidité": {
-        "metrics": ["Volume moyen transigé"],
-        "weights": [1.0],
-        "invert": False,
-        "color": "#06b6d4",
-        "icon": "💧",
-        "description": "Facilité de transaction",
-    },
-    "Taille": {
-        "metrics": ["Capitalisation boursière"],
-        "weights": [1.0],
-        "invert": False,
-        "color": "#ec4899",
-        "icon": "🏢",
-        "description": "Taille de l'entreprise",
-    },
-}
+    # COURS
+    cours_raw = pd.read_excel(xl, sheet_name="Cours")
+    cours = cours_raw.drop(columns=[c for c in BENCH_COLS if c in cours_raw.columns], errors='ignore')
+    cours['Date'] = pd.to_datetime(cours['Date'], errors='coerce')
+    cours = cours.dropna(subset=['Date']).set_index('Date').sort_index()
+    tickers = [c for c in cours.columns]
 
-FACTOR_NAMES = list(FACTOR_DEFINITIONS.keys())
+    # VOLUMES
+    vol_raw = pd.read_excel(xl, sheet_name="Volume moyen")
+    vol_raw['Date'] = pd.to_datetime(vol_raw['Date'], errors='coerce')
+    vol = vol_raw.dropna(subset=['Date']).set_index('Date').sort_index()
+    vol = vol[[c for c in tickers if c in vol.columns]]
 
+    # DIVIDENDES
+    div_raw = pd.read_excel(xl, sheet_name="Historique_dividende")
+    div = div_raw[['Date'] + [c for c in tickers if c in div_raw.columns]].copy()
+    div = div.dropna(subset=['Date'])
+    div['Date'] = div['Date'].astype(int)
 
-# ─────────────────────────────────────────────
-# CORE COMPUTATION FUNCTIONS  (per technical note)
-# ─────────────────────────────────────────────
+    # MOYENNE COURS
+    moy_raw = pd.read_excel(xl, sheet_name="Moyenne_cours")
+    moy = moy_raw[['Date'] + [c for c in tickers if c in moy_raw.columns]].copy()
+    moy = moy.dropna(subset=['Date'])
+    moy['Date'] = moy['Date'].astype(int)
 
-def compute_factor_index(df: pd.DataFrame, factor: str) -> pd.Series:
-    """
-    Étape 1 — Compute factoriel index F_i(t, T) for each security T.
+    # NB TITRES
+    nb_raw = pd.read_excel(xl, sheet_name="Nb_titres")
+    nb_titres, nb_flottant = {}, {}
+    for _, row in nb_raw.iterrows():
+        label = str(row.get('Date', '')).strip().lower()
+        for t in tickers:
+            if t in nb_raw.columns:
+                v = row.get(t, np.nan)
+                if pd.notna(v):
+                    if 'flottant' in label:
+                        nb_flottant[t] = float(v)
+                    elif 'nombre' in label:
+                        nb_titres[t] = float(v)
 
-    Standard:  F_i = Σ w_ij * m_ij / max(m_ij)
-    Volatility: F_i = Σ w_ij * min(m_ij) / m_ij
-    """
-    defn = FACTOR_DEFINITIONS[factor]
-    metrics = defn["metrics"]
-    weights = defn["weights"]
-    invert = defn["invert"]
+    # TABLEAU DE BORD
+    tb = pd.read_excel(xl, sheet_name="Tableau de bord")
+    tb_tickers = [c for c in tickers if c in tb.columns]
 
-    scores = pd.Series(0.0, index=df.index)
-    for metric, weight in zip(metrics, weights):
-        if metric not in df.columns:
+    def extract_metric(label):
+        result = {}
+        header = None
+        for idx, row in tb.iterrows():
+            val = str(row.get(tb.columns[2], '')).strip().upper()
+            if label.upper() in val:
+                header = idx
+                break
+        if header is None:
+            return result
+        for idx2 in range(header + 1, min(header + 8, len(tb))):
+            row = tb.iloc[idx2]
+            yr = row.get(tb.columns[1], np.nan)
+            if pd.isna(yr):
+                break
+            year = int(yr)
+            for t in tb_tickers:
+                v = row.get(t, np.nan)
+                if pd.notna(v):
+                    result.setdefault(t, {})[year] = float(v)
+        return result
+
+    return {
+        "cours": cours, "volumes": vol, "dividendes": div,
+        "moyenne_cours": moy, "nb_titres": nb_titres, "nb_flottant": nb_flottant,
+        "tickers": tickers,
+        "capitaux_propres": extract_metric("CAPITAUX PROPRES"),
+        "resultat_net":     extract_metric("RESULTAT NET"),
+        "flux_treso":       extract_metric("FLUX DE TRESORERIE"),
+        "chiffre_affaires": extract_metric("CHIFFRE D'AFFAIRES"),
+        "resultat_expl":    extract_metric("RESULTAT D'EXPLOITATION"),
+    }
+
+# ─── FACTOR FUNCTIONS ─────────────────────────────────────────
+
+def compute_value_factor(data, year, weights):
+    moy = data["moyenne_cours"]
+    nb  = data["nb_titres"]
+    year_row = moy[moy['Date'] == year]
+    if year_row.empty:
+        return None
+    detail = {}
+    for t in data["tickers"]:
+        if t not in nb:
             continue
-        col = df[metric].astype(float)
-        if invert:
-            min_val = col.min()
-            # avoid div by zero
-            factor_score = weight * (min_val / col.replace(0, np.nan)).fillna(0)
-        else:
-            max_val = col.max()
-            factor_score = weight * (col / max_val if max_val != 0 else 0)
-        scores += factor_score
-    return scores.clip(lower=0)
+        cm = year_row[t].values[0] if t in year_row.columns else np.nan
+        if pd.isna(cm) or cm <= 0:
+            continue
+        cap = cm * nb[t]
+        if cap <= 0:
+            continue
+        bp  = data["capitaux_propres"].get(t, {}).get(year, np.nan)
+        eps = data["resultat_net"].get(t, {}).get(year, np.nan)
+        fcf = data["flux_treso"].get(t, {}).get(year, np.nan)
+        ca  = data["chiffre_affaires"].get(t, {}).get(year, np.nan)
+        detail[t] = {
+            "Book/Price": bp/cap  if pd.notna(bp)  else np.nan,
+            "EPS/Price":  eps/cap if pd.notna(eps) else np.nan,
+            "FCF/Price":  fcf/cap if pd.notna(fcf) else np.nan,
+            "CA/Price":   ca/cap  if pd.notna(ca)  else np.nan,
+            "Cours moy":  cm,
+            "Cap. mché (MFCFA)": cap/1e6,
+        }
+    if not detail:
+        return None
+    df = pd.DataFrame(detail).T
+    metrics = ["Book/Price","EPS/Price","FCF/Price","CA/Price"]
+    # normalise: m / max(m)
+    norm = {}
+    for m in metrics:
+        col = df[m].replace([np.inf,-np.inf], np.nan)
+        mx  = col.max()
+        norm[m] = col/mx if (pd.notna(mx) and mx > 0) else col*0
+    norm_df = pd.DataFrame(norm)
+    score = sum(norm_df[m].fillna(0) * weights.get(m, 0) for m in metrics)
+    res = pd.DataFrame({"Score Value": score, **{m: df[m] for m in metrics},
+                        "Cours moy": df["Cours moy"],
+                        "Cap. mché (MFCFA)": df["Cap. mché (MFCFA)"]})
+    return res.dropna(subset=["Score Value"]).sort_values("Score Value", ascending=False)
 
+def compute_momentum_factor(data, end_date, weights):
+    returns = data["cours"].pct_change().dropna(how='all')
+    try:
+        ed = pd.to_datetime(end_date)
+    except Exception:
+        ed = returns.index[-1]
+    sub = returns[returns.index <= ed]
+    horizons = {"Journalier":1,"Hebdo":5,"Mensuel":21,"Trimestriel":63,"Semestriel":126,"Annuel":252}
+    mom = {h: sub.tail(n).mean() for h, n in horizons.items()}
+    mom_df = pd.DataFrame(mom).replace([np.inf,-np.inf], np.nan)
+    norm = {}
+    for h in horizons:
+        col = mom_df[h].dropna()
+        mx  = col.max()
+        norm[h] = mom_df[h]/mx if (pd.notna(mx) and mx > 0) else mom_df[h]*0
+    norm_df = pd.DataFrame(norm)
+    score = sum(norm_df[h].fillna(0) * weights.get(h, 1/6) for h in horizons)
+    res = pd.DataFrame({"Score Momentum": score,
+                        **{f"Rdt {h}": mom_df[h] for h in horizons}})
+    return res.dropna(subset=["Score Momentum"]).sort_values("Score Momentum", ascending=False)
 
-def compute_multifactor_index(factor_scores: pd.DataFrame, betas: dict) -> pd.Series:
-    """
-    Étape 2 — MF(t,T) = Σ β_i * F_i(t,T)
-    """
-    mf = pd.Series(0.0, index=factor_scores.index)
-    for factor, beta in betas.items():
-        if factor in factor_scores.columns:
-            mf += beta * factor_scores[factor]
-    return mf
+def compute_volatility_factor(data, end_date, window=252):
+    returns = data["cours"].pct_change().dropna(how='all')
+    try:
+        ed = pd.to_datetime(end_date)
+    except Exception:
+        ed = returns.index[-1]
+    vol = returns[returns.index <= ed].tail(window).std().dropna()
+    min_v = vol.min()
+    score = (min_v / vol).replace([np.inf,-np.inf], np.nan).dropna()
+    return pd.DataFrame({"Score Volatilité": score, "Écart-type": vol}
+                        ).sort_values("Score Volatilité", ascending=False)
 
+def compute_dividend_factor(data, year):
+    div = data["dividendes"]
+    moy = data["moyenne_cours"]
+    dr  = div[div['Date'] == year]
+    mr  = moy[moy['Date'] == year]
+    if dr.empty or mr.empty:
+        return None
+    yields = {}
+    for t in data["tickers"]:
+        if t not in dr.columns or t not in mr.columns:
+            continue
+        d = dr[t].values[0]
+        p = mr[t].values[0]
+        if pd.notna(d) and pd.notna(p) and p > 0:
+            yields[t] = d/p
+    if not yields:
+        return None
+    s = pd.Series(yields)
+    mx = s.max()
+    score = s/mx if mx > 0 else s
+    return pd.DataFrame({"Score Dividende": score, "Dividend Yield": s}
+                        ).sort_values("Score Dividende", ascending=False)
 
-def compute_portfolio_weights(mf_scores: pd.Series, excluded: list = None) -> pd.Series:
-    """
-    Étape 3 — α(T,t) = (n - r(T,t) + 1) / (n(n+1)/2)
-    Rank 1 = best score → highest weight.
-    """
+def compute_liquidity_factor(data):
+    avg = data["volumes"].mean().replace([np.inf,-np.inf], np.nan).dropna()
+    mx  = avg.max()
+    score = avg/mx if mx > 0 else avg
+    return pd.DataFrame({"Score Liquidité": score, "Volume moyen": avg}
+                        ).sort_values("Score Liquidité", ascending=False)
+
+def compute_multifactor(factor_results, betas):
+    all_t = set()
+    for df in factor_results.values():
+        if df is not None:
+            all_t.update(df.index)
+    mf = pd.Series(0.0, index=list(all_t))
+    for fname, df in factor_results.items():
+        if df is None:
+            continue
+        sc = [c for c in df.columns if "Score" in c]
+        if not sc:
+            continue
+        mf = mf.add(df[sc[0]] * betas.get(fname, 0), fill_value=0)
+    return mf.sort_values(ascending=False)
+
+def compute_portfolio_weights(mf, excluded=None):
     if excluded:
-        mf_scores = mf_scores.drop(labels=excluded, errors="ignore")
-
-    n = len(mf_scores)
+        mf = mf.drop(labels=excluded, errors='ignore')
+    n = len(mf)
     if n == 0:
         return pd.Series(dtype=float)
+    ranks = mf.rank(ascending=False, method='min')
+    w = (n - ranks + 1) / (n * (n+1) / 2)
+    return w.sort_values(ascending=False)
 
-    # rank: 1 = highest MF score
-    ranks = mf_scores.rank(ascending=False, method="min")
-    weights = (n - ranks + 1) / (n * (n + 1) / 2)
-    return weights.sort_values(ascending=False)
+# ─── PLOT HELPERS ─────────────────────────────────────────────
+PLOT_LAYOUT = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                   font=dict(color="#94a3b8", family="JetBrains Mono"),
+                   margin=dict(l=10, r=10, t=20, b=60),
+                   xaxis=dict(gridcolor="#1e2d45", tickangle=-45),
+                   yaxis=dict(gridcolor="#1e2d45"))
 
+def score_bar(series, color_end, height=360, fmt=".4f", yformat=None):
+    top = series.head(25)
+    fig = go.Figure(go.Bar(
+        x=top.index, y=top.values,
+        marker=dict(color=top.values,
+                    colorscale=[[0,"#1e2d45"],[1, color_end]], line=dict(width=0)),
+        text=[f"{v:{fmt}}" for v in top.values],
+        textposition="outside",
+        textfont=dict(size=9, color="#94a3b8"),
+    ))
+    layout = {**PLOT_LAYOUT, "height": height}
+    if yformat:
+        layout["yaxis"] = dict(gridcolor="#1e2d45", tickformat=yformat)
+    fig.update_layout(**layout)
+    return fig
 
-# ─────────────────────────────────────────────
-# SESSION STATE INIT
-# ─────────────────────────────────────────────
-if "securities_df" not in st.session_state:
-    st.session_state.securities_df = None
-if "factor_scores" not in st.session_state:
-    st.session_state.factor_scores = None
-if "mf_scores" not in st.session_state:
-    st.session_state.mf_scores = None
-if "portfolio_weights" not in st.session_state:
-    st.session_state.portfolio_weights = None
-if "betas" not in st.session_state:
-    st.session_state.betas = {f: round(1/7, 4) for f in FACTOR_NAMES}
+# ─── SESSION STATE ────────────────────────────────────────────
+for k in ["data","factor_results","mf_scores","pw"]:
+    if k not in st.session_state:
+        st.session_state[k] = {} if k == "factor_results" else None
 
-
-# ─────────────────────────────────────────────
-# SIDEBAR
-# ─────────────────────────────────────────────
+# ─── SIDEBAR ──────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
-    <div style='text-align:center; padding: 16px 0 8px 0;'>
-        <div style='font-family:Syne,sans-serif; font-size:20px; font-weight:800;
-                    background:linear-gradient(135deg,#3b82f6,#06b6d4);
-                    -webkit-background-clip:text; -webkit-text-fill-color:transparent;'>
-            CGF GESTION
-        </div>
-        <div style='font-size:10px; color:#475569; letter-spacing:0.12em; margin-top:2px;'>
-            BRVM MULTIFACTORIAL ENGINE
-        </div>
-    </div>
-    <hr style='margin:8px 0 16px 0;'>
+    <div style='text-align:center;padding:14px 0 8px 0;'>
+      <div style='font-family:Syne,sans-serif;font-size:20px;font-weight:800;
+           background:linear-gradient(135deg,#3b82f6,#06b6d4);
+           -webkit-background-clip:text;-webkit-text-fill-color:transparent;'>CGF GESTION</div>
+      <div style='font-size:10px;color:#475569;letter-spacing:.12em;'>STRATÉGIE MULTIFACTORIELLE BRVM</div>
+    </div><hr style='margin:8px 0 14px 0;'>
     """, unsafe_allow_html=True)
 
-    st.markdown("**📐 Poids des Facteurs (β_i)**")
-    st.caption("Doit sommer à 1.0")
+    uploaded = st.file_uploader("📁 Base_de_données_-_SMF.xlsx",
+                                 type=["xlsx","xls"], label_visibility="visible")
+    if uploaded:
+        try:
+            st.session_state.data = load_data(uploaded.read())
+            st.success(f"✅ {len(st.session_state.data['tickers'])} titres chargés")
+        except Exception as e:
+            st.error(f"Erreur : {e}")
 
-    betas = {}
-    beta_sum = 0.0
-    for factor in FACTOR_NAMES:
-        defn = FACTOR_DEFINITIONS[factor]
-        val = st.slider(
-            f"{defn['icon']} {factor}",
-            min_value=0.0, max_value=1.0,
-            value=st.session_state.betas[factor],
-            step=0.01,
-            key=f"beta_{factor}"
-        )
-        betas[factor] = val
-        beta_sum += val
-
-    beta_sum_rounded = round(beta_sum, 4)
-    if abs(beta_sum_rounded - 1.0) > 0.01:
-        st.warning(f"⚠️ Somme β = {beta_sum_rounded:.3f} ≠ 1.0")
-    else:
-        st.success(f"✅ Somme β = {beta_sum_rounded:.3f}")
-
-    if st.button("⚖️ Égaliser les poids"):
-        equal = round(1/7, 4)
-        for f in FACTOR_NAMES:
-            st.session_state.betas[f] = equal
-        st.rerun()
-
-    st.session_state.betas = betas
-
-    st.markdown("---")
-    st.markdown("**📋 Référence BRVM**")
-    benchmark = st.selectbox("Indice de référence", ["BRVM Composite", "BRVM Prestige"], label_visibility="collapsed")
-
-    st.markdown("---")
-    st.markdown("""
-    <div style='font-size:10px; color:#475569; line-height:1.6;'>
-        Note technique · CGF Gestion<br>
-        v1.0 · Mai 2024<br>
-        Auteur : A.B.A.M. Gueye
-    </div>
-    """, unsafe_allow_html=True)
-
-
-# ─────────────────────────────────────────────
-# HEADER
-# ─────────────────────────────────────────────
-st.markdown("""
-<div style='padding: 8px 0 24px 0;'>
-    <span class='pill'>Stratégie Smart Beta</span>
-    <p class='section-header'>Moteur d'Allocation Multifactoriel BRVM</p>
-    <p class='section-sub'>Basé sur la Note Technique CGF Gestion · 10/05/2024 · Étapes 1→2→3</p>
-</div>
-""", unsafe_allow_html=True)
-
-# ─────────────────────────────────────────────
-# TABS
-# ─────────────────────────────────────────────
-tab_data, tab_factors, tab_mf, tab_portfolio, tab_formula = st.tabs([
-    "📥 Données",
-    "📊 Indices Factoriels",
-    "🔢 Indice Multifactoriel",
-    "📂 Portefeuille Cible",
-    "📐 Formules"
-])
-
-
-# ════════════════════════════════════════════
-# TAB 1 — DATA INPUT
-# ════════════════════════════════════════════
-with tab_data:
-    st.markdown("""
-    <span class='pill'>Étape préliminaire</span>
-    <p class='section-header'>Saisie des données de marché</p>
-    <p class='section-sub'>Importez un fichier Excel/CSV ou utilisez les données de démonstration BRVM</p>
-    """, unsafe_allow_html=True)
-
-    col_load, col_demo = st.columns([1, 1])
-
-    with col_load:
-        st.markdown("**📂 Importer vos données**")
-        uploaded = st.file_uploader(
-            "Fichier Excel ou CSV",
-            type=["xlsx", "xls", "csv"],
-            help="Le fichier doit contenir une colonne 'Ticker' et les métriques financières."
-        )
-        if uploaded:
-            try:
-                if uploaded.name.endswith(".csv"):
-                    df = pd.read_csv(uploaded)
-                else:
-                    df = pd.read_excel(uploaded)
-                st.session_state.securities_df = df
-                st.success(f"✅ {len(df)} titres chargés — {df.shape[1]} colonnes")
-            except Exception as e:
-                st.error(f"Erreur : {e}")
-
-    with col_demo:
-        st.markdown("**🎲 Données de démonstration BRVM**")
-        st.caption("Génère des titres fictifs avec toutes les métriques requises")
-        n_stocks = st.number_input("Nombre de titres", min_value=5, max_value=50, value=20, step=1)
-
-        if st.button("🚀 Générer les données de démo"):
-            np.random.seed(42)
-            tickers = [
-                "SNTS", "ONTBV", "SGBC", "BICC", "ECOBANK",
-                "SOLIBRA", "SPHC", "PALM", "CABC", "NSIA",
-                "TOTALSE", "CFAO", "NESTLE", "UNILEVER", "BOABF",
-                "CORIS", "SAPH", "SIFCA", "SICOR", "FILTISAC",
-                "SITAB", "SODECI", "CIE", "CILU", "SETAO",
-                "SODE", "BERNABE", "UNIWAX", "TRITURAF", "VIVO",
-                "AIRTEL", "MTN", "ORANGE", "CROWN", "BICI",
-                "SGCI", "BHCI", "SMBC", "BSIC", "SIB",
-                "ALIOS", "BOA", "UBA", "ATLANTIC", "NSIA2",
-                "BLOHORN", "VERSUS", "CAPEC", "CELTEL", "ICON"
-            ][:n_stocks]
-
-            demo = pd.DataFrame({
-                "Ticker": tickers,
-                "Société": [f"Société {t}" for t in tickers],
-                "Secteur": np.random.choice(["Banque", "Industrie", "Télécom", "Agro", "Distribution"], n_stocks),
-                # Value metrics
-                "Book-to-Price (B/P)": np.random.uniform(0.1, 3.0, n_stocks).round(3),
-                "EPS/Price (P/E inv.)": np.random.uniform(0.02, 0.25, n_stocks).round(4),
-                "FCF/Price": np.random.uniform(-0.05, 0.20, n_stocks).round(4),
-                "Sales/Price": np.random.uniform(0.1, 5.0, n_stocks).round(3),
-                "EBIT/EV": np.random.uniform(0.01, 0.20, n_stocks).round(4),
-                # Quality
-                "Levier financier": np.random.uniform(0.1, 0.8, n_stocks).round(3),
-                "Ratio qualité résultat": np.random.uniform(0.3, 1.5, n_stocks).round(3),
-                "ROA": np.random.uniform(0.01, 0.20, n_stocks).round(4),
-                "ROE": np.random.uniform(0.05, 0.35, n_stocks).round(4),
-                # Dividende
-                "Dividend Yield": np.random.uniform(0.0, 0.10, n_stocks).round(4),
-                # Volatilité
-                "Écart-type des rendements": np.random.uniform(0.005, 0.05, n_stocks).round(5),
-                # Momentum
-                "Rdt moyen journalier": np.random.uniform(-0.002, 0.003, n_stocks).round(5),
-                "Rdt moyen hebdo": np.random.uniform(-0.01, 0.015, n_stocks).round(5),
-                "Rdt moyen mensuel": np.random.uniform(-0.03, 0.06, n_stocks).round(4),
-                "Rdt moyen trimestriel": np.random.uniform(-0.05, 0.15, n_stocks).round(4),
-                "Rdt moyen semestriel": np.random.uniform(-0.10, 0.25, n_stocks).round(4),
-                "Rdt moyen annuel": np.random.uniform(-0.15, 0.50, n_stocks).round(4),
-                # Liquidité
-                "Volume moyen transigé": np.random.uniform(1e4, 5e6, n_stocks).round(0),
-                # Taille
-                "Capitalisation boursière": np.random.uniform(1e9, 5e11, n_stocks).round(0),
-            })
-            demo.set_index("Ticker", inplace=True)
-            st.session_state.securities_df = demo
-            st.success(f"✅ {n_stocks} titres BRVM générés avec toutes les métriques")
-
-    # Show loaded data
-    if st.session_state.securities_df is not None:
-        df = st.session_state.securities_df
+    data = st.session_state.data
+    if data:
         st.markdown("---")
-        st.markdown(f"**Univers des titres — {len(df)} valeurs**")
-
-        # Coverage check
-        all_metrics = []
-        for defn in FACTOR_DEFINITIONS.values():
-            all_metrics.extend(defn["metrics"])
-        all_metrics = list(set(all_metrics))
-        found = [m for m in all_metrics if m in df.columns]
-        missing = [m for m in all_metrics if m not in df.columns]
-
-        mcol1, mcol2 = st.columns(2)
-        mcol1.metric("Métriques disponibles", f"{len(found)}/{len(all_metrics)}")
-        mcol2.metric("Titres dans l'univers", len(df))
-
-        if missing:
-            st.warning(f"Métriques manquantes : {', '.join(missing)}")
-
-        st.dataframe(df.style.format(precision=4), use_container_width=True, height=350)
-
-        # Download template
-        template_cols = ["Ticker"] + all_metrics
-        template_df = pd.DataFrame(columns=template_cols)
-        buf = io.BytesIO()
-        template_df.to_excel(buf, index=False)
-        st.download_button(
-            "⬇️ Télécharger le template Excel",
-            data=buf.getvalue(),
-            file_name="template_brvm_multifactorial.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-
-# ════════════════════════════════════════════
-# TAB 2 — FACTOR INDICES
-# ════════════════════════════════════════════
-with tab_factors:
-    st.markdown("""
-    <span class='pill'>Étape 1</span>
-    <p class='section-header'>Calcul des Indices Factoriels</p>
-    <p class='section-sub'>F_i(t,T) = Σ w_ij · m_ij / max(m_ij) &nbsp;|&nbsp; Inversion pour la Volatilité</p>
-    """, unsafe_allow_html=True)
-
-    if st.session_state.securities_df is None:
-        st.info("👈 Chargez vos données dans l'onglet **Données** pour commencer.")
+        avail_years = sorted(data["moyenne_cours"]["Date"].dropna().astype(int).unique(), reverse=True)
+        selected_year = st.selectbox("📅 Année (Value / Dividende)", avail_years)
+        date_ref = st.date_input("📅 Date ref. (Momentum / Vol.)", value=data["cours"].index[-1].date())
+        st.markdown("---")
+        st.markdown("**⚖️ Poids des facteurs (β_i)**")
+        b_val = st.slider("💰 Value",      0.0, 1.0, 0.20, 0.01)
+        b_mom = st.slider("🚀 Momentum",   0.0, 1.0, 0.20, 0.01)
+        b_vol = st.slider("📉 Volatilité", 0.0, 1.0, 0.20, 0.01)
+        b_div = st.slider("💸 Dividende",  0.0, 1.0, 0.20, 0.01)
+        b_liq = st.slider("💧 Liquidité",  0.0, 1.0, 0.20, 0.01)
+        bs = round(b_val+b_mom+b_vol+b_div+b_liq, 4)
+        st.success(f"✅ Σβ = {bs:.2f}") if abs(bs-1.0) <= 0.01 else st.warning(f"⚠️ Σβ = {bs:.2f}")
+        betas = {"Value":b_val,"Momentum":b_mom,"Volatilité":b_vol,"Dividende":b_div,"Liquidité":b_liq}
     else:
-        df = st.session_state.securities_df.copy()
+        selected_year, date_ref, betas = 2024, None, {}
 
-        if st.button("⚙️ Calculer les indices factoriels", type="primary"):
-            factor_scores = pd.DataFrame(index=df.index)
-            for factor in FACTOR_NAMES:
-                factor_scores[factor] = compute_factor_index(df, factor)
-            st.session_state.factor_scores = factor_scores
-            st.success("✅ Indices factoriels calculés avec succès")
+    st.markdown("---")
+    st.markdown("""<div style='font-size:10px;color:#475569;line-height:1.6;'>
+    Note Technique CGF Gestion · 10/05/2024<br>Auteur : A.B.A.M. Gueye</div>""", unsafe_allow_html=True)
 
-        if st.session_state.factor_scores is not None:
-            fs = st.session_state.factor_scores
+# ─── HEADER ───────────────────────────────────────────────────
+st.markdown("""
+<div style='padding:6px 0 20px 0;'>
+  <span class='pill'>Smart Beta · BRVM · 48 Titres</span>
+  <p class='sh'>Moteur d'Allocation Multifactoriel</p>
+  <p class='ss'>CGF Gestion · Note Technique 10/05/2024 · Facteurs : Value · Momentum · Volatilité · Dividende · Liquidité</p>
+</div>""", unsafe_allow_html=True)
 
-            # Summary metrics
-            cols = st.columns(7)
-            for i, factor in enumerate(FACTOR_NAMES):
-                defn = FACTOR_DEFINITIONS[factor]
-                with cols[i]:
-                    best = fs[factor].idxmax()
-                    st.metric(
-                        label=f"{defn['icon']} {factor}",
-                        value=f"{fs[factor].mean():.3f}",
-                        delta=f"Leader: {best}"
-                    )
+if not data:
+    st.warning("⬅️ Veuillez charger **Base_de_données_-_SMF.xlsx** dans la barre latérale.")
+    st.stop()
 
-            st.markdown("---")
+fr = st.session_state.factor_results
 
-            # Heatmap
-            st.markdown("**Heatmap des scores factoriels**")
-            fig_heat = go.Figure(data=go.Heatmap(
-                z=fs.values,
-                x=fs.columns.tolist(),
-                y=fs.index.tolist(),
-                colorscale=[
-                    [0, "#0b0f1a"],
-                    [0.3, "#1e3a5f"],
-                    [0.6, "#3b82f6"],
-                    [1, "#06b6d4"]
-                ],
-                text=fs.round(3).values,
-                texttemplate="%{text}",
-                textfont={"size": 9, "family": "JetBrains Mono"},
-                hoverongaps=False,
-                showscale=True,
-                colorbar=dict(
-                    tickfont=dict(color="#94a3b8", family="JetBrains Mono"),
-                    bgcolor="rgba(0,0,0,0)",
-                    bordercolor="#1e2d45",
-                )
-            ))
-            fig_heat.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#94a3b8", family="JetBrains Mono"),
-                height=max(350, len(fs) * 22),
-                margin=dict(l=80, r=20, t=20, b=40),
-                xaxis=dict(tickfont=dict(size=11), side="top"),
-                yaxis=dict(tickfont=dict(size=10), autorange="reversed"),
-            )
-            st.plotly_chart(fig_heat, use_container_width=True)
+# ─── TABS ─────────────────────────────────────────────────────
+t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
+    "💰 Value", "🚀 Momentum", "📉 Volatilité", "💸 Dividende",
+    "💧 Liquidité", "🔢 Indice MF", "📂 Portefeuille", "ℹ️ Données"])
 
-            # Factor distribution (radar per top-5 stocks)
-            st.markdown("**Profil factoriel — Top 5 titres (meilleur MF brut)**")
-            raw_mf = sum(fs[f] * (1/7) for f in FACTOR_NAMES)
-            top5 = raw_mf.nlargest(5).index.tolist()
+# ══ VALUE ══════════════════════════════════════════════════════
+with t1:
+    st.markdown("<span class='pill'>Étape 1 · Facteur Value</span><p class='sh'>Valorisation relative au cours</p>", unsafe_allow_html=True)
+    st.markdown("""<div class='fbox'>F_value(t,T) = Σ w_i · m_i(t,T) / max_E(m_i(t,T))<br>
+    Métriques : Book/Price · EPS/Price · FCF/Price · CA/Price</div>""", unsafe_allow_html=True)
 
-            fig_radar = go.Figure()
-            cats = FACTOR_NAMES + [FACTOR_NAMES[0]]
-            for ticker in top5:
-                vals = [fs.loc[ticker, f] for f in FACTOR_NAMES]
-                vals_closed = vals + [vals[0]]
-                fig_radar.add_trace(go.Scatterpolar(
-                    r=vals_closed, theta=cats,
-                    fill="toself", name=ticker,
-                    opacity=0.7,
-                    line=dict(width=2)
-                ))
-            fig_radar.update_layout(
-                polar=dict(
-                    bgcolor="rgba(0,0,0,0)",
-                    radialaxis=dict(visible=True, range=[0, 1],
-                                   tickfont=dict(color="#475569", size=9, family="JetBrains Mono"),
-                                   gridcolor="#1e2d45", linecolor="#1e2d45"),
-                    angularaxis=dict(tickfont=dict(color="#94a3b8", size=11, family="Syne"),
-                                     gridcolor="#1e2d45", linecolor="#1e2d45")
-                ),
-                paper_bgcolor="rgba(0,0,0,0)",
-                legend=dict(font=dict(color="#94a3b8", family="JetBrains Mono"),
-                            bgcolor="rgba(0,0,0,0)"),
-                height=420,
-                margin=dict(l=60, r=60, t=40, b=40),
-                font=dict(color="#94a3b8"),
-            )
-            st.plotly_chart(fig_radar, use_container_width=True)
+    c1,c2,c3,c4 = st.columns(4)
+    w_bp  = c1.number_input("Book/Price",  0.0,1.0,0.25,0.05)
+    w_eps = c2.number_input("EPS/Price",   0.0,1.0,0.25,0.05)
+    w_fcf = c3.number_input("FCF/Price",   0.0,1.0,0.25,0.05)
+    w_ca  = c4.number_input("CA/Price",    0.0,1.0,0.25,0.05)
+    ws = round(w_bp+w_eps+w_fcf+w_ca,4)
+    if abs(ws-1.0) > 0.01:
+        st.warning(f"Somme poids = {ws:.2f} ≠ 1.0")
 
-            # Table
-            st.markdown("**Table des scores factoriels**")
-            display_fs = fs.copy().round(4)
-            st.dataframe(display_fs.style.background_gradient(
-                cmap="Blues", axis=0
-            ), use_container_width=True)
+    if st.button("⚙️ Calculer le Facteur Value", type="primary"):
+        weights_v = {"Book/Price":w_bp,"EPS/Price":w_eps,"FCF/Price":w_fcf,"CA/Price":w_ca}
+        res = compute_value_factor(data, selected_year, weights_v)
+        if res is not None:
+            fr["Value"] = res
+            st.success(f"✅ {len(res)} titres scorés — Année {selected_year}")
+        else:
+            st.error("Données insuffisantes.")
 
-            buf = io.BytesIO()
-            fs.reset_index().to_excel(buf, index=False)
-            st.download_button("⬇️ Exporter les scores factoriels",
-                               buf.getvalue(),
-                               "scores_factoriels.xlsx",
-                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    if "Value" in fr:
+        res = fr["Value"]
+        m1,m2,m3,m4 = st.columns(4)
+        m1.metric("Titres", len(res))
+        m2.metric("Score max", f"{res['Score Value'].max():.4f}")
+        m3.metric("N°1 Value", res.index[0])
+        m4.metric("Score moyen", f"{res['Score Value'].mean():.4f}")
 
+        st.plotly_chart(score_bar(res["Score Value"], "#06b6d4"), use_container_width=True)
 
-# ════════════════════════════════════════════
-# TAB 3 — MULTIFACTOR INDEX
-# ════════════════════════════════════════════
-with tab_mf:
-    st.markdown("""
-    <span class='pill'>Étape 2</span>
-    <p class='section-header'>Calcul de l'Indice Multifactoriel</p>
-    <p class='section-sub'>MF(t,T) = Σ β_i · F_i(t,T) &nbsp;·&nbsp; Ajustez les β dans la barre latérale</p>
-    """, unsafe_allow_html=True)
+        metrics_v = ["Book/Price","EPS/Price","FCF/Price","CA/Price"]
+        disp = res[[c for c in ["Score Value"]+metrics_v+["Cours moy","Cap. mché (MFCFA)"] if c in res.columns]].reset_index()
+        disp.columns = ["Ticker"] + [c for c in ["Score Value"]+metrics_v+["Cours moy","Cap. mché (MFCFA)"] if c in res.columns]
+        disp.insert(0,"Rang", range(1, len(disp)+1))
+        st.dataframe(disp.style.format({c:"{:.4f}" for c in metrics_v} | {"Score Value":"{:.4f}","Cours moy":"{:,.0f}","Cap. mché (MFCFA)":"{:,.0f}"}
+                     ).bar(subset=["Score Value"], color=["#1e3a5f","#3b82f6"]),
+                     use_container_width=True, hide_index=True)
 
-    if st.session_state.factor_scores is None:
-        st.info("👈 Calculez d'abord les **Indices Factoriels** (Étape 1).")
+        buf = io.BytesIO(); disp.to_excel(buf, index=False)
+        st.download_button("⬇️ Exporter", buf.getvalue(), f"value_{selected_year}.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+# ══ MOMENTUM ═══════════════════════════════════════════════════
+with t2:
+    st.markdown("<span class='pill'>Étape 1 · Facteur Momentum</span><p class='sh'>Dynamique des cours — 6 horizons</p>", unsafe_allow_html=True)
+    st.markdown("""<div class='fbox'>F_mom = Σ w_h · rdt_moyen_h / max(rdt_moyen_h) &nbsp;·&nbsp; h ∈ {J, 5J, 21J, 63J, 126J, 252J}</div>""", unsafe_allow_html=True)
+
+    hl = ["Journalier","Hebdo","Mensuel","Trimestriel","Semestriel","Annuel"]
+    mc = st.columns(6)
+    w_mom = {h: mc[i].number_input(h, 0.0, 1.0, round(1/6,4), 0.01, key=f"wm{i}") for i,h in enumerate(hl)}
+
+    if st.button("⚙️ Calculer le Momentum", type="primary"):
+        res = compute_momentum_factor(data, str(date_ref), w_mom)
+        fr["Momentum"] = res
+        st.success(f"✅ {len(res)} titres scorés")
+
+    if "Momentum" in fr:
+        res = fr["Momentum"]
+        m1,m2,m3 = st.columns(3)
+        m1.metric("Titres", len(res)); m2.metric("N°1", res.index[0]); m3.metric("Score max", f"{res['Score Momentum'].max():.4f}")
+        st.plotly_chart(score_bar(res["Score Momentum"], "#8b5cf6"), use_container_width=True)
+        rdt_c = [c for c in res.columns if "Rdt" in c]
+        disp2 = res[["Score Momentum"]+rdt_c].head(20).reset_index().rename(columns={"index":"Ticker"})
+        st.dataframe(disp2.style.format({"Score Momentum":"{:.4f}"} | {c:"{:.4%}" for c in rdt_c}),
+                     use_container_width=True, hide_index=True)
+
+# ══ VOLATILITÉ ═════════════════════════════════════════════════
+with t3:
+    st.markdown("<span class='pill'>Étape 1 · Facteur Volatilité</span><p class='sh'>Faible volatilité — Inversion</p>", unsafe_allow_html=True)
+    st.markdown("""<div class='fbox'>F_vol(t,T) = min_{E}(σ) / σ(T) &nbsp;·&nbsp; Score élevé = titre stable</div>""", unsafe_allow_html=True)
+    window_v = st.slider("Fenêtre (jours de trading)", 60, 504, 252, 21)
+
+    if st.button("⚙️ Calculer la Volatilité", type="primary"):
+        res = compute_volatility_factor(data, str(date_ref), window_v)
+        fr["Volatilité"] = res
+        st.success(f"✅ {len(res)} titres scorés")
+
+    if "Volatilité" in fr:
+        res = fr["Volatilité"]
+        m1,m2,m3 = st.columns(3)
+        m1.metric("Titre le + stable", res.index[0])
+        m2.metric("σ min", f"{res['Écart-type'].min():.4%}")
+        m3.metric("σ moy", f"{res['Écart-type'].mean():.4%}")
+
+        l,r = st.columns(2)
+        with l:
+            st.markdown("**Score (inversé) — Top 25**")
+            st.plotly_chart(score_bar(res["Score Volatilité"], "#ef4444"), use_container_width=True)
+        with r:
+            st.markdown("**Volatilité annualisée (σ×√252)**")
+            rv = res.sort_values("Écart-type")
+            fig2 = go.Figure(go.Bar(x=rv.index, y=rv["Écart-type"]*np.sqrt(252),
+                                    marker=dict(color=rv["Écart-type"]*np.sqrt(252),
+                                                colorscale=[[0,"#10b981"],[0.5,"#f59e0b"],[1,"#ef4444"]])))
+            fig2.update_layout(**{**PLOT_LAYOUT,"height":360,"yaxis":dict(gridcolor="#1e2d45",tickformat=".1%")})
+            st.plotly_chart(fig2, use_container_width=True)
+
+# ══ DIVIDENDE ══════════════════════════════════════════════════
+with t4:
+    st.markdown("<span class='pill'>Étape 1 · Facteur Dividende</span><p class='sh'>Dividend Yield = Dividende / Cours moyen</p>", unsafe_allow_html=True)
+
+    div_years = sorted(data["dividendes"]["Date"].dropna().astype(int).unique(), reverse=True)
+    div_yr = st.selectbox("Année dividende", div_years)
+
+    if st.button("⚙️ Calculer le Dividende", type="primary"):
+        res = compute_dividend_factor(data, div_yr)
+        if res is not None:
+            fr["Dividende"] = res
+            paying = len(res[res["Dividend Yield"]>0])
+            st.success(f"✅ {len(res)} titres · {paying} payeurs de dividende")
+        else:
+            st.error("Données insuffisantes.")
+
+    if "Dividende" in fr:
+        res = fr["Dividende"]
+        paying = res[res["Dividend Yield"]>0]
+        m1,m2,m3 = st.columns(3)
+        m1.metric("Payeurs", len(paying))
+        m2.metric("Yield max", f"{res['Dividend Yield'].max():.2%}")
+        m3.metric("N°1 Dividende", res.index[0])
+
+        fig_d = go.Figure(go.Bar(x=res.index, y=res["Dividend Yield"],
+                                 marker=dict(color=res["Dividend Yield"],
+                                             colorscale=[[0,"#1e2d45"],[1,"#f59e0b"]]),
+                                 text=[f"{v:.2%}" for v in res["Dividend Yield"]],
+                                 textposition="outside", textfont=dict(size=9,color="#94a3b8")))
+        fig_d.update_layout(**{**PLOT_LAYOUT,"height":360,"yaxis":dict(gridcolor="#1e2d45",tickformat=".1%")})
+        st.plotly_chart(fig_d, use_container_width=True)
+
+        st.dataframe(res.reset_index().rename(columns={"index":"Ticker"}).style.format(
+            {"Score Dividende":"{:.4f}","Dividend Yield":"{:.4%}"}),
+            use_container_width=True, hide_index=True)
+
+# ══ LIQUIDITÉ ══════════════════════════════════════════════════
+with t5:
+    st.markdown("<span class='pill'>Étape 1 · Facteur Liquidité</span><p class='sh'>Volume moyen transigé</p>", unsafe_allow_html=True)
+
+    if st.button("⚙️ Calculer la Liquidité", type="primary"):
+        res = compute_liquidity_factor(data)
+        fr["Liquidité"] = res
+        st.success(f"✅ {len(res)} titres scorés")
+
+    if "Liquidité" in fr:
+        res = fr["Liquidité"]
+        m1,m2 = st.columns(2)
+        m1.metric("Titre + liquide", res.index[0])
+        m2.metric("Vol. moyen max", f"{res['Volume moyen'].max()/1e6:.0f} M FCFA")
+
+        fig_l = go.Figure(go.Bar(x=res.index, y=res["Volume moyen"]/1e6,
+                                 marker=dict(color=res["Score Liquidité"],
+                                             colorscale=[[0,"#1e2d45"],[1,"#06b6d4"]])))
+        fig_l.update_layout(**{**PLOT_LAYOUT,"height":360,"yaxis":dict(gridcolor="#1e2d45",title="Volume moy. (M FCFA)")})
+        st.plotly_chart(fig_l, use_container_width=True)
+
+# ══ INDICE MULTIFACTORIEL ══════════════════════════════════════
+with t6:
+    st.markdown("<span class='pill'>Étape 2</span><p class='sh'>Indice Multifactoriel</p>", unsafe_allow_html=True)
+    st.markdown("""<div class='fbox'>MF(t,T) = Σ_{i=1}^{5} β_i · F_i(t,T) &nbsp;·&nbsp; Σ β_i = 1<br>
+    Ajustez les β_i dans la barre latérale gauche</div>""", unsafe_allow_html=True)
+
+    computed = list(fr.keys())
+    if not computed:
+        st.info("👈 Calculez au moins un facteur avant de continuer.")
     else:
-        fs = st.session_state.factor_scores
+        st.success(f"Facteurs disponibles : {', '.join(computed)}")
+        bc = st.columns(5)
+        for i,(fname,beta) in enumerate(betas.items()):
+            bc[i].metric(f"β {fname}", f"{beta:.2f}", "✓" if fname in computed else "✗")
 
-        # Show beta summary
-        beta_cols = st.columns(7)
-        for i, factor in enumerate(FACTOR_NAMES):
-            defn = FACTOR_DEFINITIONS[factor]
-            with beta_cols[i]:
-                st.metric(f"{defn['icon']} β_{factor[:3]}", f"{betas[factor]:.2f}")
-
-        if st.button("🔢 Calculer l'indice multifactoriel", type="primary"):
-            mf = compute_multifactor_index(fs, betas)
+        if st.button("🔢 Calculer l'Indice MF", type="primary"):
+            mf = compute_multifactor(fr, betas)
             st.session_state.mf_scores = mf
-            st.success("✅ Indice multifactoriel calculé")
+            st.success(f"✅ {len(mf)} titres classés")
 
         if st.session_state.mf_scores is not None:
-            mf = st.session_state.mf_scores.sort_values(ascending=False)
+            mf = st.session_state.mf_scores
+            st.markdown("---")
+            st.plotly_chart(score_bar(mf, "#3b82f6", height=380), use_container_width=True)
 
-            # Ranking bar chart
-            st.markdown("**Classement MF — tous les titres**")
-            colors = [FACTOR_DEFINITIONS["Value"]["color"] if i < 5 else
-                      ("#1e3a5f" if i >= len(mf)-5 else "#1e2d45")
-                      for i in range(len(mf))]
+            # Stacked contribution
+            st.markdown("**Décomposition factorielle — Top 15**")
+            top15 = mf.head(15).index
+            clrs = {"Value":"#3b82f6","Momentum":"#8b5cf6","Volatilité":"#ef4444",
+                    "Dividende":"#f59e0b","Liquidité":"#06b6d4"}
+            fig_s = go.Figure()
+            for fname in computed:
+                sc = [c for c in fr[fname].columns if "Score" in c][0]
+                vals = [fr[fname].loc[t,sc]*betas.get(fname,0) if t in fr[fname].index else 0 for t in top15]
+                fig_s.add_trace(go.Bar(name=fname,x=list(top15),y=vals,
+                                       marker_color=clrs.get(fname,"#64748b"),opacity=0.85))
+            fig_s.update_layout(barmode="stack",**{**PLOT_LAYOUT,"height":340,
+                                "legend":dict(orientation="h",y=1.08,bgcolor="rgba(0,0,0,0)"),
+                                "margin":dict(l=10,r=10,t=50,b=50)})
+            st.plotly_chart(fig_s, use_container_width=True)
 
-            fig_bar = go.Figure(go.Bar(
-                x=mf.index,
-                y=mf.values,
-                marker=dict(
-                    color=colors,
-                    line=dict(width=0)
-                ),
-                text=mf.round(4).values,
-                textposition="outside",
-                textfont=dict(size=9, color="#94a3b8", family="JetBrains Mono"),
-            ))
-            fig_bar.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#94a3b8", family="JetBrains Mono"),
-                height=380,
-                margin=dict(l=20, r=20, t=20, b=60),
-                xaxis=dict(tickfont=dict(size=10), gridcolor="#1e2d45", linecolor="#1e2d45"),
-                yaxis=dict(gridcolor="#1e2d45", linecolor="#1e2d45", title="Score MF"),
-                bargap=0.3,
-            )
-            # annotation for top/bottom zone
-            fig_bar.add_annotation(
-                x=mf.index[2], y=mf.max()*1.05,
-                text="▲ Zone d'achat", showarrow=False,
-                font=dict(color="#3b82f6", size=10, family="JetBrains Mono"),
-            )
-            st.plotly_chart(fig_bar, use_container_width=True)
+            tbl = mf.reset_index()
+            tbl.columns = ["Ticker","Score MF"]
+            tbl.insert(0,"Rang",range(1,len(tbl)+1))
+            st.dataframe(tbl, use_container_width=True, hide_index=True)
 
-            # Factor contribution decomposition (top 10)
-            st.markdown("**Décomposition factorielle — Top 10**")
-            top10 = mf.head(10).index
-            decomp = pd.DataFrame(
-                {f: betas[f] * fs.loc[top10, f] for f in FACTOR_NAMES},
-                index=top10
-            )
-            colors_stack = [FACTOR_DEFINITIONS[f]["color"] for f in FACTOR_NAMES]
-            fig_stack = go.Figure()
-            for factor, color in zip(FACTOR_NAMES, colors_stack):
-                fig_stack.add_trace(go.Bar(
-                    name=FACTOR_DEFINITIONS[factor]["icon"] + " " + factor,
-                    x=decomp.index,
-                    y=decomp[factor],
-                    marker_color=color,
-                    opacity=0.85,
-                ))
-            fig_stack.update_layout(
-                barmode="stack",
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#94a3b8", family="JetBrains Mono"),
-                height=380,
-                legend=dict(orientation="h", y=1.08, font=dict(size=10),
-                            bgcolor="rgba(0,0,0,0)"),
-                margin=dict(l=20, r=20, t=50, b=50),
-                xaxis=dict(tickfont=dict(size=11), gridcolor="#1e2d45"),
-                yaxis=dict(gridcolor="#1e2d45", title="Contribution β·F"),
-                bargap=0.25,
-            )
-            st.plotly_chart(fig_stack, use_container_width=True)
-
-            # Full table with ranking
-            st.markdown("**Table de classement MF complet**")
-            mf_table = mf.reset_index()
-            mf_table.columns = ["Ticker", "Score MF"]
-            mf_table.insert(0, "Rang", range(1, len(mf_table)+1))
-            mf_table["Score MF"] = mf_table["Score MF"].round(6)
-            st.dataframe(mf_table, use_container_width=True, hide_index=True)
-
-            buf = io.BytesIO()
-            mf_table.to_excel(buf, index=False)
-            st.download_button("⬇️ Exporter le classement MF",
-                               buf.getvalue(),
-                               "classement_multifactoriel.xlsx",
+            buf=io.BytesIO(); tbl.to_excel(buf,index=False)
+            st.download_button("⬇️ Exporter classement MF", buf.getvalue(), "classement_MF.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-
-# ════════════════════════════════════════════
-# TAB 4 — PORTFOLIO CONSTRUCTION
-# ════════════════════════════════════════════
-with tab_portfolio:
-    st.markdown("""
-    <span class='pill'>Étape 3</span>
-    <p class='section-header'>Construction du Portefeuille Cible</p>
-    <p class='section-sub'>α(T,t) = (n − r(T,t) + 1) / (n(n+1)/2) &nbsp;·&nbsp; Pondération par rang MF</p>
-    """, unsafe_allow_html=True)
+# ══ PORTEFEUILLE ═══════════════════════════════════════════════
+with t7:
+    st.markdown("<span class='pill'>Étape 3</span><p class='sh'>Construction du Portefeuille Cible</p>", unsafe_allow_html=True)
+    st.markdown("""<div class='fbox'>α(T,t) = (n − r(T,t) + 1) / (n·(n+1)/2)<br>
+    Propriété : Σ α = 1 · le meilleur titre MF reçoit le poids maximum</div>""", unsafe_allow_html=True)
 
     if st.session_state.mf_scores is None:
-        st.info("👈 Calculez d'abord l'**Indice Multifactoriel** (Étape 2).")
+        st.info("👈 Calculez d'abord l'Indice MF (onglet 🔢).")
     else:
         mf = st.session_state.mf_scores
-        df = st.session_state.securities_df
+        p1,p2 = st.columns([2,1])
+        with p1:
+            excluded = st.multiselect("🚫 Exclure des titres", mf.index.tolist())
+        with p2:
+            top_n = st.number_input("🔝 Top N (0 = tous)", 0, len(mf), 0)
 
-        pcol1, pcol2 = st.columns([2, 1])
-        with pcol1:
-            all_tickers = mf.index.tolist()
-            excluded = st.multiselect(
-                "🚫 Exclure des titres (choix motivé du Gestionnaire)",
-                options=all_tickers,
-                help="Titres exclus du portefeuille cible selon la note technique"
-            )
-        with pcol2:
-            top_n = st.number_input("🔝 Top N titres seulement (0 = tous)", min_value=0, max_value=len(mf), value=0)
-
-        if st.button("📂 Construire le portefeuille cible", type="primary"):
-            pw = compute_portfolio_weights(mf, excluded=excluded)
+        if st.button("📂 Construire le portefeuille", type="primary"):
+            pw = compute_portfolio_weights(mf, excluded)
             if top_n > 0:
-                pw = pw.head(top_n)
-                pw = pw / pw.sum()  # renormalize
-            st.session_state.portfolio_weights = pw
-            st.success(f"✅ Portefeuille construit : {len(pw)} titres · Σα = {pw.sum():.6f}")
+                pw = pw.head(top_n); pw = pw / pw.sum()
+            st.session_state.pw = pw
+            st.success(f"✅ {len(pw)} titres · Σα = {pw.sum():.6f}")
 
-        if st.session_state.portfolio_weights is not None:
-            pw = st.session_state.portfolio_weights
-
-            # KPI row
-            kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-            kpi1.metric("Nombre de titres", len(pw))
-            kpi2.metric("Poids max", f"{pw.max()*100:.2f}%")
-            kpi3.metric("Poids min", f"{pw.min()*100:.2f}%")
-            kpi4.metric("HHI (concentration)", f"{(pw**2).sum():.4f}")
-
+        if st.session_state.pw is not None:
+            pw = st.session_state.pw
+            k1,k2,k3,k4 = st.columns(4)
+            k1.metric("Nb titres", len(pw))
+            k2.metric("Poids max", f"{pw.max()*100:.2f}%")
+            k3.metric("Poids min", f"{pw.min()*100:.2f}%")
+            k4.metric("HHI", f"{(pw**2).sum():.4f}")
             st.markdown("---")
 
-            left, right = st.columns([1, 1])
+            pl,pr = st.columns(2)
+            with pl:
+                st.markdown("**Répartition**")
+                dpw = pw.copy()
+                if len(dpw) > 15:
+                    dpw = pd.concat([dpw.head(15), pd.Series({"Autres": dpw.iloc[15:].sum()})])
+                fig_p = go.Figure(go.Pie(labels=dpw.index, values=dpw.values, hole=0.45,
+                                         textfont=dict(size=10),
+                                         marker=dict(line=dict(color="#0b0f1a",width=2)),
+                                         hovertemplate="<b>%{label}</b><br>%{percent:.2%}<extra></extra>"))
+                fig_p.update_layout(paper_bgcolor="rgba(0,0,0,0)", height=380,
+                                    font=dict(color="#94a3b8",family="JetBrains Mono"),
+                                    legend=dict(font=dict(size=10),bgcolor="rgba(0,0,0,0)"),
+                                    margin=dict(l=10,r=10,t=20,b=10),
+                                    annotations=[dict(text=f"<b>{len(pw)}</b><br>titres",
+                                                      x=0.5,y=0.5,font_size=14,showarrow=False,
+                                                      font=dict(color="#94a3b8"))])
+                st.plotly_chart(fig_p, use_container_width=True)
 
-            with left:
-                # Pie chart
-                st.markdown("**Répartition du portefeuille**")
-                display_pw = pw.copy()
-                if len(display_pw) > 15:
-                    top15 = display_pw.head(15)
-                    rest = pd.Series({"Autres": display_pw.iloc[15:].sum()})
-                    display_pw = pd.concat([top15, rest])
+            with pr:
+                st.markdown("**Poids — Top 20**")
+                pt = pw.head(20)
+                fig_h = go.Figure(go.Bar(x=pt.values*100, y=pt.index, orientation="h",
+                                         marker=dict(color=np.linspace(0.9,0.2,len(pt)),
+                                                     colorscale="Blues"),
+                                         text=[f"{v*100:.2f}%" for v in pt.values],
+                                         textposition="outside", textfont=dict(size=9,color="#94a3b8")))
+                fig_h.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
+                                    height=440, font=dict(color="#94a3b8",family="JetBrains Mono"),
+                                    margin=dict(l=10,r=70,t=20,b=30),
+                                    xaxis=dict(gridcolor="#1e2d45",ticksuffix="%"),
+                                    yaxis=dict(autorange="reversed"))
+                st.plotly_chart(fig_h, use_container_width=True)
 
-                fig_pie = go.Figure(go.Pie(
-                    labels=display_pw.index,
-                    values=display_pw.values,
-                    hole=0.45,
-                    textfont=dict(size=10, family="JetBrains Mono"),
-                    marker=dict(
-                        colors=px.colors.sequential.Blues_r[:len(display_pw)] +
-                               ["#1e2d45"] * max(0, len(display_pw) - 9),
-                        line=dict(color="#0b0f1a", width=2)
-                    ),
-                    hovertemplate="<b>%{label}</b><br>%{percent:.2%}<extra></extra>"
-                ))
-                fig_pie.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color="#94a3b8", family="JetBrains Mono"),
-                    height=360,
-                    legend=dict(font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
-                    margin=dict(l=10, r=10, t=20, b=10),
-                    annotations=[dict(
-                        text=f"<b>{len(pw)}</b><br>titres",
-                        x=0.5, y=0.5, font_size=14,
-                        showarrow=False,
-                        font=dict(color="#94a3b8", family="Syne")
-                    )]
-                )
-                st.plotly_chart(fig_pie, use_container_width=True)
-
-            with right:
-                # Horizontal bar of weights
-                st.markdown("**Poids par titre — top 20**")
-                pw_top = pw.head(20)
-                fig_horiz = go.Figure(go.Bar(
-                    x=pw_top.values * 100,
-                    y=pw_top.index,
-                    orientation="h",
-                    marker=dict(
-                        color=np.linspace(0.8, 0.2, len(pw_top)),
-                        colorscale="Blues",
-                        line=dict(width=0)
-                    ),
-                    text=[f"{v*100:.2f}%" for v in pw_top.values],
-                    textposition="outside",
-                    textfont=dict(size=9, color="#94a3b8", family="JetBrains Mono"),
-                ))
-                fig_horiz.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color="#94a3b8", family="JetBrains Mono"),
-                    height=420,
-                    margin=dict(l=10, r=70, t=20, b=30),
-                    xaxis=dict(title="Poids (%)", gridcolor="#1e2d45", ticksuffix="%"),
-                    yaxis=dict(autorange="reversed", tickfont=dict(size=11)),
-                    bargap=0.25,
-                )
-                st.plotly_chart(fig_horiz, use_container_width=True)
-
-            # Full allocation table
-            st.markdown("**Table d'allocation complète**")
-            n = len(mf.drop(labels=excluded, errors="ignore"))
-            ranks = mf.drop(labels=excluded, errors="ignore").rank(ascending=False, method="min")
-
-            alloc_table = pd.DataFrame({
+            ranks = mf.drop(labels=excluded, errors='ignore').rank(ascending=False, method='min')
+            alloc = pd.DataFrame({
                 "Ticker": pw.index,
                 "Rang r(T,t)": ranks.loc[pw.index].astype(int),
                 "Score MF": mf.loc[pw.index].round(6),
                 "Poids α(T,t)": pw.values,
-                "Poids (%)": (pw.values * 100).round(4),
+                "Poids (%)": (pw.values*100).round(4),
             }).reset_index(drop=True)
+            st.dataframe(alloc.style.format({"Score MF":"{:.6f}","Poids α(T,t)":"{:.6f}","Poids (%)":"{:.4f}%"}
+                         ).bar(subset=["Poids (%)"],color=["#1e3a5f","#3b82f6"]),
+                         use_container_width=True, hide_index=True)
 
-            if "Secteur" in df.columns:
-                alloc_table["Secteur"] = df.loc[alloc_table["Ticker"]]["Secteur"].values
+            buf = io.BytesIO(); alloc.to_excel(buf, index=False)
+            st.download_button("⬇️ Exporter le portefeuille (Excel)", buf.getvalue(),
+                               "portefeuille_BRVM.xlsx",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-            st.dataframe(
-                alloc_table.style.format({
-                    "Score MF": "{:.6f}",
-                    "Poids α(T,t)": "{:.6f}",
-                    "Poids (%)": "{:.4f}%"
-                }).bar(subset=["Poids (%)"], color=["#1e3a5f", "#3b82f6"]),
-                use_container_width=True,
-                hide_index=True,
-            )
+# ══ DONNÉES ════════════════════════════════════════════════════
+with t8:
+    st.markdown("<span class='pill'>Sources</span><p class='sh'>Aperçu des données chargées</p>", unsafe_allow_html=True)
+    c1,c2,c3 = st.columns(3)
+    c1.metric("Observations cours", len(data["cours"]))
+    c2.metric("Première date", str(data["cours"].index[0].date()))
+    c3.metric("Dernière date",  str(data["cours"].index[-1].date()))
+    st.markdown(f"**{len(data['tickers'])} titres :** {', '.join(data['tickers'])}")
+    st.markdown("---")
 
-            # Sector breakdown if available
-            if "Secteur" in df.columns:
-                st.markdown("**Répartition sectorielle**")
-                sector_weights = alloc_table.groupby("Secteur")["Poids α(T,t)"].sum().sort_values(ascending=False)
-                fig_sec = go.Figure(go.Bar(
-                    x=sector_weights.index,
-                    y=sector_weights.values * 100,
-                    marker_color=["#3b82f6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444"],
-                    text=[f"{v*100:.1f}%" for v in sector_weights.values],
-                    textposition="outside",
-                    textfont=dict(size=11, color="#e2e8f0", family="JetBrains Mono"),
-                ))
-                fig_sec.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color="#94a3b8", family="JetBrains Mono"),
-                    height=300,
-                    margin=dict(l=20, r=20, t=20, b=40),
-                    xaxis=dict(gridcolor="#1e2d45"),
-                    yaxis=dict(gridcolor="#1e2d45", ticksuffix="%", title="Poids (%)"),
-                    bargap=0.3,
-                )
-                st.plotly_chart(fig_sec, use_container_width=True)
-
-            # Download
-            buf = io.BytesIO()
-            alloc_table.to_excel(buf, index=False)
-            st.download_button(
-                "⬇️ Exporter le portefeuille cible (Excel)",
-                data=buf.getvalue(),
-                file_name="portefeuille_cible_BRVM.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-
-
-# ════════════════════════════════════════════
-# TAB 5 — FORMULAS REFERENCE
-# ════════════════════════════════════════════
-with tab_formula:
-    st.markdown("""
-    <span class='pill'>Référence</span>
-    <p class='section-header'>Formulaire Mathématique</p>
-    <p class='section-sub'>Extrait de la Note Technique CGF Gestion · 10/05/2024</p>
-    """, unsafe_allow_html=True)
-
-    with st.expander("📐 Étape 1 · Calcul des indices factoriels", expanded=True):
-        st.markdown("""
-        <div class='formula-box'>
-        <b>Cas général :</b><br><br>
-        &nbsp;&nbsp;&nbsp;&nbsp;F_i(t,T) = Σ_{j=1}^{k_i} w_ij · m_ij(t,T) / max_{E_t}( m_ij(t,T) )<br><br>
-        <b>Cas Volatilité (inversion) :</b><br><br>
-        &nbsp;&nbsp;&nbsp;&nbsp;F_i(t,T) = Σ_{j=1}^{k_i} w_ij · min_{E_t}( m_ij(t,T) ) / m_ij(t,T)<br><br>
-        où :<br>
-        &nbsp;&nbsp;k_i     = nombre de métriques du facteur i<br>
-        &nbsp;&nbsp;m_ij    = valeur de la métrique j du facteur i pour le titre T à la date t<br>
-        &nbsp;&nbsp;w_ij    = poids de la métrique j dans le facteur i<br>
-        &nbsp;&nbsp;E_t     = univers des titres à la date t
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Factor detail table
-        rows = []
-        for fname, defn in FACTOR_DEFINITIONS.items():
-            for m, w in zip(defn["metrics"], defn["weights"]):
-                rows.append({
-                    "Facteur": defn["icon"] + " " + fname,
-                    "Métrique": m,
-                    "Poids w_ij": f"{w*100:.2f}%",
-                    "Inversion": "✓" if defn["invert"] else "—"
-                })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
-    with st.expander("📐 Étape 2 · Calcul de l'indice multifactoriel"):
-        st.markdown("""
-        <div class='formula-box'>
-        MF(t,T) = Σ_{i=1}^{7} β_i · F_i(t,T)<br><br>
-        où :<br>
-        &nbsp;&nbsp;β_i  = poids attribué au facteur i (ajustable dans la barre latérale)<br>
-        &nbsp;&nbsp;F_i  = score factoriel calculé à l'étape 1<br>
-        &nbsp;&nbsp;Σ β_i = 1  (contrainte de normalisation)
-        </div>
-        """, unsafe_allow_html=True)
-
-    with st.expander("📐 Étape 3 · Construction du portefeuille cible"):
-        st.markdown("""
-        <div class='formula-box'>
-        α(T,t) = ( n(t) − r(T,t) + 1 ) / ( n(t) · (n(t)+1) / 2 )<br><br>
-        où :<br>
-        &nbsp;&nbsp;α(T,t)  = pondération du titre T dans le portefeuille cible à la date t<br>
-        &nbsp;&nbsp;r(T,t)  = rang du titre T selon MF (1 = meilleur score)<br>
-        &nbsp;&nbsp;n(t)    = nombre total de titres admissibles à la date t<br><br>
-        Propriété : Σ_T α(T,t) = 1  (les poids somment à 1)<br>
-        Propriété : α décroît linéairement avec le rang → le meilleur titre reçoit le poids max.
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Numeric illustration
-        st.markdown("**Illustration numérique (n=5)**")
-        n_ex = 5
-        ex_data = []
-        for r in range(1, n_ex+1):
-            w = (n_ex - r + 1) / (n_ex * (n_ex+1) / 2)
-            ex_data.append({"Rang r": r, "Poids α": f"{w:.4f}", "Poids (%)": f"{w*100:.2f}%"})
-        st.dataframe(pd.DataFrame(ex_data), use_container_width=True, hide_index=True)
-
-    with st.expander("📋 Indices de référence BRVM"):
-        st.markdown("""
-        **BRVM Composite** — Indice de référence par défaut pour les sous-portefeuilles actions.  
-        Construit comme la moyenne pondérée par capitalisation de l'ensemble des titres cotés.  
-        Variation = variation de capitalisation boursière (hors effet volume).  
-        Ajusté à chaque introduction en bourse ou augmentation de capital.
-
-        **BRVM Prestige** — Regroupe les valeurs du Compartiment Prestige.  
-        Révision annuelle selon les critères d'éligibilité.
-
-        En l'absence d'indices multifactoriels sur le marché BRVM, le **BRVM Composite** est 
-        l'indice de référence par défaut.
-        """)
-
-    with st.expander("📋 Détail des 7 facteurs et métriques"):
-        for fname, defn in FACTOR_DEFINITIONS.items():
-            st.markdown(f"""
-            **{defn['icon']} Facteur {fname}** · *{defn['description']}*
-            """)
-            detail_rows = [
-                {"Métrique": m, "Poids": f"{w*100:.2f}%"}
-                for m, w in zip(defn["metrics"], defn["weights"])
-            ]
-            st.dataframe(pd.DataFrame(detail_rows), use_container_width=True, hide_index=True)
-            st.markdown("")
+    ti1, ti2, ti3 = st.tabs(["📈 Cours historiques", "💸 Dividendes", "🏢 Résultats nets"])
+    with ti1:
+        sel = st.multiselect("Titres", data["tickers"], default=data["tickers"][:6])
+        if sel:
+            fig_c = go.Figure()
+            for t in sel:
+                s = data["cours"][t].dropna()
+                fig_c.add_trace(go.Scatter(x=s.index, y=s, name=t, mode="lines", line=dict(width=1.5)))
+            fig_c.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                                 font=dict(color="#94a3b8",family="JetBrains Mono"), height=400,
+                                 legend=dict(bgcolor="rgba(0,0,0,0)"),
+                                 xaxis=dict(gridcolor="#1e2d45"), yaxis=dict(gridcolor="#1e2d45"),
+                                 hovermode="x unified")
+            st.plotly_chart(fig_c, use_container_width=True)
+    with ti2:
+        st.dataframe(data["dividendes"].set_index("Date"), use_container_width=True)
+    with ti3:
+        rn = data["resultat_net"]
+        rows2 = [{"Ticker":t,"Année":y,"Résultat net (MFCFA)":v/1e6}
+                 for t,yrs in rn.items() for y,v in yrs.items()]
+        if rows2:
+            df_rn = pd.DataFrame(rows2).pivot(index="Ticker",columns="Année",values="Résultat net (MFCFA)")
+            st.dataframe(df_rn.style.format("{:,.0f}"), use_container_width=True)
