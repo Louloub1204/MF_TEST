@@ -160,10 +160,21 @@ def load_data(uploaded_bytes):
                             pass
         return result
 
+    # Années disponibles dans les fondamentaux (exclut valeurs parasites > 9999)
+    fundamental_years = sorted(
+        {y for metric in [
+            extract_metric("CAPITAUX PROPRES"),
+            extract_metric("RESULTAT NET"),
+        ] for t_data in metric.values() for y in t_data.keys()
+         if isinstance(y, int) and 1990 <= y <= 2100},
+        reverse=True
+    )
+
     return {
         "cours": cours, "volumes": vol, "dividendes": div,
         "moyenne_cours": moy, "nb_titres": nb_titres, "nb_flottant": nb_flottant,
         "tickers": tickers,
+        "fundamental_years": fundamental_years,
         "capitaux_propres": extract_metric("CAPITAUX PROPRES"),
         "resultat_net":     extract_metric("RESULTAT NET"),
         "flux_treso":       extract_metric("FLUX DE TRESORERIE"),
@@ -697,8 +708,18 @@ with st.sidebar:
     data = st.session_state.data
     if data:
         st.markdown("---")
-        avail_years = sorted(data["moyenne_cours"]["Date"].dropna().astype(int).unique(), reverse=True)
-        selected_year = st.selectbox("📅 Année (Value / Dividende)", avail_years)
+        # Années fondamentaux disponibles (CP, RN, etc.) — exclut 2025 si absent
+        fund_years = data.get("fundamental_years", [])
+        if fund_years:
+            selected_year = st.selectbox(
+                "📅 Année fondamentaux (Value / Dividende)",
+                fund_years,
+                help="Années pour lesquelles les données de Capitaux propres et Résultat net sont disponibles dans le Tableau de bord."
+            )
+            st.caption(f"Données fondamentaux disponibles : {', '.join(str(y) for y in fund_years)}")
+        else:
+            selected_year = 2024
+            st.warning("Aucune année de fondamentaux détectée.")
         date_ref = st.date_input("📅 Date ref. (Momentum / Vol.)", value=data["cours"].index[-1].date())
         st.markdown("---")
         st.markdown("**⚖️ Poids des facteurs β_i**")
@@ -744,6 +765,467 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("""<div style='font-size:10px;color:#475569;line-height:1.6;'>
     Note Technique CGF Gestion · 10/05/2024<br>Auteur : A.B.A.M. Gueye</div>""", unsafe_allow_html=True)
+
+    # ── Manuel d'utilisation intégré ──────────────────────────
+    st.markdown("---")
+    st.markdown("**📖 Manuel d'utilisation**")
+
+    @st.cache_data(show_spinner=False)
+    def generate_manual_pdf():
+        """Génère le PDF du manuel et retourne les bytes."""
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.lib.units import cm
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+            PageBreak, HRFlowable, KeepTogether
+        )
+        import datetime, io as _io
+
+        BLUE   = colors.HexColor("#3b82f6")
+        CYAN   = colors.HexColor("#06b6d4")
+        GREEN  = colors.HexColor("#10b981")
+        AMBER  = colors.HexColor("#f59e0b")
+        RED    = colors.HexColor("#ef4444")
+        PURPLE = colors.HexColor("#8b5cf6")
+        LIGHT  = colors.HexColor("#f0f4ff")
+        MUTED  = colors.HexColor("#64748b")
+        DARK   = colors.HexColor("#1e293b")
+        WHITE  = colors.white
+        PW     = A4[0]
+
+        def sty(name, **kw):
+            return ParagraphStyle(name, **kw)
+
+        S = {
+            "cover_title": sty("ct", fontName="Helvetica-Bold", fontSize=26,
+                               textColor=DARK, alignment=TA_CENTER, spaceAfter=6, leading=32),
+            "cover_sub":   sty("cs", fontName="Helvetica", fontSize=12,
+                               textColor=BLUE, alignment=TA_CENTER, spaceAfter=4),
+            "cover_date":  sty("cd", fontName="Helvetica", fontSize=9,
+                               textColor=MUTED, alignment=TA_CENTER, spaceAfter=10),
+            "h1":  sty("h1", fontName="Helvetica-Bold", fontSize=15,
+                       textColor=BLUE, spaceBefore=16, spaceAfter=7, leading=19),
+            "h2":  sty("h2", fontName="Helvetica-Bold", fontSize=12,
+                       textColor=DARK, spaceBefore=12, spaceAfter=5, leading=15),
+            "h3":  sty("h3", fontName="Helvetica-Bold", fontSize=10,
+                       textColor=MUTED, spaceBefore=8, spaceAfter=4, leading=13),
+            "body": sty("body", fontName="Helvetica", fontSize=9.5,
+                        textColor=DARK, alignment=TA_JUSTIFY, spaceAfter=5, leading=14),
+            "bl":   sty("bl", fontName="Helvetica", fontSize=9.5,
+                        textColor=DARK, spaceAfter=4, leading=14, leftIndent=14),
+            "cap":  sty("cap", fontName="Helvetica-Oblique", fontSize=8.5,
+                        textColor=MUTED, alignment=TA_CENTER, spaceAfter=4),
+            "frm":  sty("frm", fontName="Courier-Bold", fontSize=9.5,
+                        textColor=colors.HexColor("#1e3a5f"),
+                        backColor=colors.HexColor("#dbeafe"),
+                        alignment=TA_CENTER, spaceAfter=7, leading=15, borderPad=8),
+            "toc":  sty("toc", fontName="Helvetica", fontSize=10.5,
+                        textColor=DARK, spaceAfter=5, leading=17),
+            "tocs": sty("tocs", fontName="Helvetica", fontSize=9.5,
+                        textColor=MUTED, spaceAfter=4, leading=15, leftIndent=18),
+        }
+
+        def sp(n=1): return Spacer(1, n*0.32*cm)
+        def hr(c=colors.HexColor("#e2e8f0"), w=0.5):
+            return HRFlowable(width="100%", thickness=w, color=c, spaceAfter=6, spaceBefore=3)
+
+        def badge(text, col=BLUE):
+            t = Table([[Paragraph(f'<font color="white"><b>{text}</b></font>', S["bl"])]],
+                      colWidths=[PW-4*cm])
+            t.setStyle(TableStyle([
+                ("BACKGROUND",(0,0),(-1,-1),col),
+                ("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6),
+                ("LEFTPADDING",(0,0),(-1,-1),10),("RIGHTPADDING",(0,0),(-1,-1),10),
+            ]))
+            return t
+
+        def ibox(text, bg=LIGHT, border=BLUE):
+            t = Table([[Paragraph(text, S["bl"])]], colWidths=[PW-4*cm])
+            t.setStyle(TableStyle([
+                ("BACKGROUND",(0,0),(-1,-1),bg),
+                ("LINEBEFORE",(0,0),(0,-1),3,border),
+                ("TOPPADDING",(0,0),(-1,-1),7),("BOTTOMPADDING",(0,0),(-1,-1),7),
+                ("LEFTPADDING",(0,0),(-1,-1),12),("RIGHTPADDING",(0,0),(-1,-1),10),
+            ]))
+            return t
+
+        def tbl(headers, rows, col_w=None):
+            data = [headers] + rows
+            n = len(headers)
+            cw = col_w or ([(PW-4*cm)/n]*n)
+            t = Table(data, colWidths=cw, repeatRows=1)
+            t.setStyle(TableStyle([
+                ("BACKGROUND",(0,0),(-1,0),BLUE),
+                ("TEXTCOLOR",(0,0),(-1,0),WHITE),
+                ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
+                ("FONTSIZE",(0,0),(-1,-1),8.5),
+                ("FONTNAME",(0,1),(-1,-1),"Helvetica"),
+                ("ROWBACKGROUNDS",(0,1),(-1,-1),[WHITE,LIGHT]),
+                ("GRID",(0,0),(-1,-1),0.25,colors.HexColor("#cbd5e1")),
+                ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+                ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
+                ("LEFTPADDING",(0,0),(-1,-1),7),
+            ]))
+            return t
+
+        def ph(text): return Paragraph(f"<b>{text}</b>", S["bl"])
+        def pb(text): return Paragraph(text, S["bl"])
+
+        buf = _io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=A4,
+            leftMargin=2*cm, rightMargin=2*cm,
+            topMargin=2.2*cm, bottomMargin=2.2*cm,
+            title="Manuel CGF Gestion — SMF BRVM")
+
+        story = []
+        today = datetime.date.today().strftime("%d/%m/%Y")
+
+        # ── COVER ────────────────────────────────────────────────
+        story += [
+            Spacer(1, 2.5*cm),
+            Paragraph("MANUEL D'UTILISATION", S["cover_title"]),
+            sp(0.3),
+            Paragraph("Moteur d'Allocation Multifactoriel BRVM", S["cover_sub"]),
+            Paragraph(f"CGF Gestion · Note Technique 10/05/2024 · v1.0 · {today}", S["cover_date"]),
+            sp(),
+            hr(BLUE, 1.5), sp(0.5),
+        ]
+        cov = Table([[pb("Application : Streamlit"), pb("Auteur : A.B.A.M. Gueye"),
+                      pb("Marché : BRVM — 48 titres"), pb("Facteurs : 5 (Value · Mom · Vol · Div · Liq)")]],
+                    colWidths=[(PW-4*cm)/4]*4)
+        cov.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),LIGHT),
+            ("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#cbd5e1")),
+            ("TOPPADDING",(0,0),(-1,-1),8),("BOTTOMPADDING",(0,0),(-1,-1),8),
+            ("LEFTPADDING",(0,0),(-1,-1),8),("VALIGN",(0,0),(-1,-1),"TOP"),
+            ("FONTSIZE",(0,0),(-1,-1),8.5)]))
+        story += [cov, sp(2), hr(BLUE,1.5), Spacer(1,3*cm),
+            Paragraph("Ce document décrit l'utilisation complète de l'application de gestion "
+                "de portefeuille multifactorielle CGF Gestion, couvrant le chargement des "
+                "données, le calcul des 5 facteurs, l'indice MF et l'optimisation du "
+                "portefeuille selon la Note Technique du 10/05/2024.", S["body"]),
+            PageBreak()]
+
+        # ── TOC ──────────────────────────────────────────────────
+        story += [Paragraph("TABLE DES MATIÈRES", S["h1"]), hr(), sp(0.3)]
+        toc = [
+            ("1.", "Présentation générale et workflow", False),
+            ("2.", "Démarrage et chargement des données", False),
+            ("2.1", "Chargement du fichier Excel", True),
+            ("2.2", "Structure des 6 feuilles", True),
+            ("2.3", "Mise à jour des données", True),
+            ("3.", "Barre latérale — Paramètres globaux", False),
+            ("4.", "Onglet Value — Facteur de valorisation", False),
+            ("4.1", "Formules et 5 métriques", True),
+            ("4.2", "Paramétrage et interprétation", True),
+            ("5.", "Onglet Momentum — Dynamique des cours", False),
+            ("5.1", "Formule et 6 horizons", True),
+            ("5.2", "Plages de dates libres par horizon", True),
+            ("6.", "Onglet Volatilité — Facteur de risque", False),
+            ("7.", "Onglet Dividende — Rendement", False),
+            ("8.", "Onglet Liquidité — Volume transigé", False),
+            ("9.", "Onglet Indice Multifactoriel", False),
+            ("10.", "Onglet Portefeuille Cible", False),
+            ("10.1", "Pipeline automatique — 4 filtres", True),
+            ("10.2", "Mode sélection manuelle", True),
+            ("10.3", "Pondération finale (Rang MF / Markowitz)", True),
+            ("11.", "Export des résultats", False),
+            ("12.", "Référence des formules mathématiques", False),
+            ("13.", "Résolution des problèmes fréquents", False),
+        ]
+        for num, title, sub in toc:
+            style = S["tocs"] if sub else S["toc"]
+            indent = "    " if sub else ""
+            story.append(Paragraph(f"{indent}<b>{num}</b>  {title}", style))
+        story.append(PageBreak())
+
+        # ── 1. PRÉSENTATION ──────────────────────────────────────
+        story += [badge("1. PRÉSENTATION GÉNÉRALE ET WORKFLOW", BLUE), sp(),
+            Paragraph("L'application implémente la Note Technique CGF Gestion du 10/05/2024 "
+                "sur la stratégie multifactorielle. Elle suit un processus en 3 étapes :", S["body"])]
+
+        steps = [
+            ("1", BLUE, "Calcul des indices factoriels (Étape 1)",
+             "Calculer F_i(t,T) pour chaque facteur et chaque titre. "
+             "5 onglets dédiés : Value, Momentum, Volatilité, Dividende, Liquidité."),
+            ("2", PURPLE, "Calcul de l'indice multifactoriel (Étape 2)",
+             "Agréger : MF(t,T) = Σ β_i · F_i(t,T). Les β sont calibrés dans la sidebar."),
+            ("3", GREEN, "Construction du portefeuille cible (Étape 3)",
+             "Pondération par rang MF ou optimisation Markowitz sur l'univers filtré."),
+        ]
+        for num, col, title, desc in steps:
+            r = Table([[Paragraph(f'<font color="white"><b>{num}</b></font>', S["bl"]),
+                        Paragraph(f'<b>{title}</b><br/>{desc}', S["bl"])]],
+                      colWidths=[0.9*cm, PW-4*cm-0.9*cm])
+            r.setStyle(TableStyle([
+                ("BACKGROUND",(0,0),(0,0),col),("BACKGROUND",(1,0),(1,0),LIGHT),
+                ("VALIGN",(0,0),(-1,-1),"MIDDLE"),("ALIGN",(0,0),(0,0),"CENTER"),
+                ("TOPPADDING",(0,0),(-1,-1),9),("BOTTOMPADDING",(0,0),(-1,-1),9),
+                ("LEFTPADDING",(0,0),(-1,-1),9),
+            ]))
+            story += [sp(0.3), r]
+        story += [sp(), PageBreak()]
+
+        # ── 2. DONNÉES ───────────────────────────────────────────
+        story += [badge("2. DÉMARRAGE ET CHARGEMENT DES DONNÉES", BLUE), sp(),
+            Paragraph("2.1  Chargement du fichier Excel", S["h2"]),
+            Paragraph("Dans la barre latérale, cliquez sur Browse files et sélectionnez "
+                "Base_de_données_-_SMF.xlsx. Le message ✅ 48 titres chargés confirme "
+                "le succès.", S["body"]),
+            sp(0.3),
+            Paragraph("2.2  Structure des 6 feuilles requises", S["h2"]),
+            tbl([ph("Feuille"), ph("Contenu"), ph("Utilisée pour")],
+                [[pb("Cours"), pb("Cours journaliers de clôture"), pb("Momentum · Volatilité")],
+                 [pb("Volume moyen"), pb("Volumes journaliers transigés"), pb("Liquidité")],
+                 [pb("Historique_dividende"), pb("Dividendes annuels versés"), pb("Dividende")],
+                 [pb("Moyenne_cours"), pb("Cours moyen annuel"), pb("Référence interne")],
+                 [pb("Nb_titres"), pb("Nombre de titres en circulation"), pb("Value (unitaire)")],
+                 [pb("Tableau de bord"), pb("5 blocs : CP · RN · FCF · CA · Rex"), pb("Value")]],
+                col_w=[(PW-4*cm)*0.28, (PW-4*cm)*0.42, (PW-4*cm)*0.30]),
+            sp(0.5),
+            Paragraph("2.3  Mise à jour des données (ex. ajout 2025)", S["h2"]),
+            Paragraph("Ajoutez une ligne 2025 dans chacun des 5 blocs du Tableau de bord "
+                "(CAPITAUX PROPRES, RESULTAT NET, FLUX DE TRESORERIE, CHIFFRE D'AFFAIRES, "
+                "RESULTAT D'EXPLOITATION) en respectant le format des années 2019–2024. "
+                "L'année 2025 apparaîtra automatiquement dans le sélecteur de la sidebar.", S["body"]),
+            sp(0.3),
+            ibox("⚠️  Les années proposées dans la sidebar sont limitées aux années disposant "
+                "simultanément de Capitaux propres ET de Résultat net dans le Tableau de bord.",
+                colors.HexColor("#fef3c7"), AMBER),
+            PageBreak()]
+
+        # ── 3. SIDEBAR ───────────────────────────────────────────
+        story += [badge("3. BARRE LATÉRALE — PARAMÈTRES GLOBAUX", MUTED), sp(),
+            Paragraph("La sidebar est permanente et accessible depuis tous les onglets.", S["body"]),
+            Paragraph("Année fondamentaux", S["h2"]),
+            Paragraph("Sélectionne l'année des données CP/RN/FCF/CA/Rex pour Value et Dividende. "
+                "Limitée aux années réellement disponibles dans votre fichier.", S["body"]),
+            Paragraph("Poids des facteurs β_i  (Σβ = 1.0)", S["h2"]),
+            tbl([ph("Curseur"), ph("Facteur"), ph("Rôle")],
+                [[pb("💰 β Value"), pb("Valorisation"), pb("Poids du score Value dans MF")],
+                 [pb("🚀 β Momentum"), pb("Dynamique"), pb("Poids du score Momentum dans MF")],
+                 [pb("📉 β Volatilité"), pb("Risque"), pb("Poids du score Volatilité dans MF")],
+                 [pb("💸 β Dividende"), pb("Rendement"), pb("Poids du score Dividende dans MF")],
+                 [pb("💧 β Liquidité"), pb("Négociabilité"), pb("Poids du score Liquidité dans MF")]]),
+            sp(0.3),
+            ibox("💡  Le bouton ⚖️ Égaliser remet tous les β à 0.20. Les poids sont persistés "
+                "entre les onglets via le session_state de Streamlit.", LIGHT, BLUE),
+            PageBreak()]
+
+        # ── 4. VALUE ─────────────────────────────────────────────
+        story += [badge("4. ONGLET VALUE — FACTEUR DE VALORISATION", BLUE), sp(),
+            Paragraph("4.1  Formules et 5 métriques", S["h2"]),
+            Paragraph("F_value(t,T) = w1·(B/P) + w2·(E/P) + w3·(FCF/P) + w4·(CA/P) + w5·(EBIT/P)", S["frm"]),
+            Paragraph("Chaque métrique est normalisée : m_ij / max_E(m_ij). Score élevé = titre sous-évalué.", S["cap"]),
+            sp(0.3),
+            tbl([ph("Métrique"), ph("Formule"), ph("Poids défaut"), ph("Interprétation")],
+                [[pb("B/P"), pb("(CP/n) / Cours moyen"), pb("20%"), pb("Valeur comptable/prix — ↑ = sous-évalué")],
+                 [pb("E/P"), pb("(RN/n) / Cours moyen"), pb("20%"), pb("Inverse du P/E — ↑ = bon marché")],
+                 [pb("FCF/P"), pb("(FCF/n) / Cours moyen"), pb("20%"), pb("Rendement des flux — ↑ = générateur de cash")],
+                 [pb("CA/P"), pb("(CA/n) / Cours moyen"), pb("20%"), pb("Revenus/prix — ↑ = chiffre d'affaires élevé")],
+                 [pb("EBIT/P"), pb("(Rex/n) / Cours moyen"), pb("20%"), pb("Profitabilité opérationnelle/prix")]],
+                col_w=[(PW-4*cm)*0.12,(PW-4*cm)*0.30,(PW-4*cm)*0.16,(PW-4*cm)*0.42]),
+            sp(0.5),
+            Paragraph("4.2  Paramétrage et interprétation", S["h2"]),
+            Paragraph("→  Période du cours moyen : choisissez Date début et Date fin. "
+                "Le cours moyen est la moyenne arithmétique des cours journaliers sur la période. "
+                "Les fondamentaux proviennent de l'année sélectionnée en sidebar.", S["bl"]),
+            Paragraph("→  Pondérations : ajustez les 5 poids (somme = 1.0). "
+                "Un poids à 0 exclut la métrique du calcul.", S["bl"]),
+            Paragraph("→  Cliquez ⚙️ Calculer le Facteur Value pour lancer. "
+                "Les résultats incluent KPIs, graphique de classement et table exportable.", S["bl"]),
+            sp(0.3),
+            ibox("⚠️  Score Value = 0.0000 : aucune métrique disponible pour ce titre "
+                "sur l'année sélectionnée. Vérifiez le Tableau de bord dans votre fichier Excel.",
+                colors.HexColor("#fef3c7"), AMBER),
+            PageBreak()]
+
+        # ── 5. MOMENTUM ──────────────────────────────────────────
+        story += [badge("5. ONGLET MOMENTUM — DYNAMIQUE DES COURS", PURPLE), sp(),
+            Paragraph("5.1  Formule", S["h2"]),
+            Paragraph("F_mom(t,T) = Σ w_h · rdt_moy_h(t,T) / max_E(rdt_moy_h)", S["frm"]),
+            Paragraph("rdt_moy_h = rendement journalier moyen sur la plage [debut_h, fin_h]", S["cap"]),
+            sp(0.3),
+            Paragraph("5.2  Plages de dates libres par horizon", S["h2"]),
+            Paragraph("Chaque horizon dispose de son propre sélecteur de plage de dates :", S["body"]),
+            sp(0.2),
+            tbl([ph("Horizon"), ph("Plage par défaut"), ph("Exemple avancé")],
+                [[pb("Journalier"), pb("J-1 → Aujourd'hui"), pb("Toujours 1 jour")],
+                 [pb("Hebdo"), pb("J-7 → Aujourd'hui"), pb("Semaine de référence")],
+                 [pb("Mensuel"), pb("J-30 → Aujourd'hui"), pb("Mois de référence")],
+                 [pb("Trimestriel"), pb("J-91 → Aujourd'hui"), pb("Dernier trimestre")],
+                 [pb("Semestriel"), pb("J-182 → Aujourd'hui"), pb("6 derniers mois")],
+                 [pb("Annuel"), pb("J-365 → Aujourd'hui"), pb("5 ans : 20/05/2021 → 20/05/2026")]]),
+            sp(0.3),
+            ibox("💡  Pour désactiver un horizon, mettez son poids à 0. Les poids restants "
+                "sont automatiquement renormalisés pour que leur somme reste égale à 1.0.", LIGHT, BLUE),
+            PageBreak()]
+
+        # ── 6·7·8 ────────────────────────────────────────────────
+        story += [badge("6. VOLATILITÉ  |  7. DIVIDENDE  |  8. LIQUIDITÉ", MUTED), sp(),
+            Paragraph("Facteur Volatilité (onglet 📉)", S["h2"]),
+            Paragraph("F_vol(t,T) = min_E(sigma) / sigma(T)    [formule inversée]", S["frm"]),
+            Paragraph("sigma = ecart-type des rendements journaliers sur la fenetre choisie (60–504 jours)", S["cap"]),
+            Paragraph("Un titre peu volatil reçoit un score élevé. La fenêtre est ajustable "
+                "via un curseur (défaut = 252 jours). Le graphique compare la volatilité "
+                "annualisée (sigma × sqrt(252)) de tous les titres.", S["body"]),
+            sp(0.5),
+            Paragraph("Facteur Dividende (onglet 💸)", S["h2"]),
+            Paragraph("F_div(t,T) = 1.0 x DY(t,T) / max_E(DY)    [poids unique = 100%]", S["frm"]),
+            Paragraph("DY = Dividende annuel verse / Cours moyen sur la periode choisie", S["cap"]),
+            Paragraph("Paramètres : année du dividende (issu de Historique_dividende) + "
+                "plage de dates pour le cours moyen (indépendante). "
+                "Un titre non-payeur reçoit DY = 0 et score = 0.", S["body"]),
+            sp(0.5),
+            Paragraph("Facteur Liquidité (onglet 💧)", S["h2"]),
+            Paragraph("F_liq(t,T) = 1.0 x Vol_moy(T) / max_E(Vol_moy)    [poids unique = 100%]", S["frm"]),
+            Paragraph("Vol_moy = volume moyen journalier sur la periode choisie", S["cap"]),
+            Paragraph("Plage de dates entièrement libre sur l'historique disponible. "
+                "Par défaut : historique complet.", S["body"]),
+            PageBreak()]
+
+        # ── 9. INDICE MF ─────────────────────────────────────────
+        story += [badge("9. ONGLET INDICE MULTIFACTORIEL", PURPLE), sp(),
+            Paragraph("MF(t,T) = beta_Value·F_Value + beta_Mom·F_Mom + beta_Vol·F_Vol + beta_Div·F_Div + beta_Liq·F_Liq", S["frm"]),
+            Paragraph("Avec Σ beta_i = 1  ·  Les beta sont calibres dans la barre laterale", S["cap"]),
+            sp(0.3),
+            Paragraph("L'onglet affiche les β actifs avec leur statut (✓ calculé / ✗ non calculé). "
+                "Il faut cliquer sur 🔢 Calculer l'Indice MF après chaque modification des β. "
+                "Résultats : classement en barres, décomposition factorielle empilée Top 15 "
+                "(contribution β_i·F_i de chaque facteur), table exportable.", S["body"]),
+            sp(0.3),
+            ibox("💡  Recalculez l'indice MF après toute modification des β en sidebar ou "
+                "après recalcul d'un facteur dans ses onglets dédiés.", LIGHT, BLUE),
+            PageBreak()]
+
+        # ── 10. PORTEFEUILLE ─────────────────────────────────────
+        story += [badge("10. ONGLET PORTEFEUILLE CIBLE", GREEN), sp(),
+            Paragraph("10.1  Pipeline automatique — 4 filtres séquentiels", S["h2"]),
+            tbl([ph("Filtre"), ph("Paramètre"), ph("Objectif"), ph("Défaut")],
+                [[pb("① Liquidité"), pb("Volume ≥ X% du max"), pb("Exclut les titres peu liquides"), pb("0%")],
+                 [pb("② Score MF"), pb("Top X% des scores"), pb("Ne garde que les mieux classés"), pb("60%")],
+                 [pb("③ Corrélation"), pb("Corr. max entre titres"), pb("Clustering — 1 par groupe"), pb("0.75")],
+                 [pb("④ Poids"), pb("Rang MF ou Markowitz"), pb("Pondération optimale"), pb("Rang MF")]],
+                col_w=[(PW-4*cm)*0.18,(PW-4*cm)*0.27,(PW-4*cm)*0.33,(PW-4*cm)*0.22]),
+            sp(0.3),
+            Paragraph("La trace du pipeline s'affiche sous forme de cartes montrant le "
+                "nombre de titres survivant à chaque filtre. Si le résultat est 0 titres, "
+                "élargissez les seuils (Liquidité → 0%, Top MF → 100%, Corrélation → 1.0).", S["body"]),
+            sp(0.5),
+            Paragraph("10.2  Mode sélection manuelle", S["h2"]),
+            Paragraph("Activez l'expander 🔧 Sélection manuelle pour choisir les titres "
+                "titre par titre, court-circuitant les 3 premiers filtres. "
+                "La pondération finale reste au choix.", S["body"]),
+            sp(0.5),
+            Paragraph("10.3  Pondération finale — Rang MF vs Markowitz", S["h2"]),
+            tbl([ph("Méthode"), ph("Formule"), ph("Quand l'utiliser")],
+                [[pb("Rang MF (défaut)"),
+                  pb("alpha(T) = (n-r+1) / (n(n+1)/2)"),
+                  pb("Approche conforme à la Note Technique · Simple · Reproductible")],
+                 [pb("Markowitz MF-augmenté"),
+                  pb("max{ lambda·Score_MF - (1-lambda)·variance }"),
+                  pb("Optimise rendement/risque · Prend en compte les corrélations")]],
+                col_w=[(PW-4*cm)*0.25,(PW-4*cm)*0.38,(PW-4*cm)*0.37]),
+            sp(0.3),
+            Paragraph("Markowitz : paramètres supplémentaires = poids Score MF dans l'utilité "
+                "(0→1), aversion au risque λ, poids min/max par titre.", S["body"]),
+            PageBreak()]
+
+        # ── 11. EXPORT ───────────────────────────────────────────
+        story += [badge("11. EXPORT DES RÉSULTATS", BLUE), sp(),
+            tbl([ph("Onglet"), ph("Fichier Excel exporté"), ph("Contenu")],
+                [[pb("Value"), pb("value_{annee}_{debut}_{fin}.xlsx"), pb("Scores + 5 métriques + cours moyen")],
+                 [pb("Momentum"), pb("momentum.xlsx"), pb("Scores + rendements moyens par horizon")],
+                 [pb("Dividende"), pb("dividende_{annee}.xlsx"), pb("Scores + Dividend Yield + cours moyen")],
+                 [pb("Liquidité"), pb("liquidite_{debut}_{fin}.xlsx"), pb("Scores + volumes moyens")],
+                 [pb("Indice MF"), pb("classement_MF.xlsx"), pb("Rang + Score MF par titre")],
+                 [pb("Portefeuille"), pb("portefeuille_optimal_BRVM.xlsx"), pb("Rang MF + poids alpha + poids %")]],
+                col_w=[(PW-4*cm)*0.18,(PW-4*cm)*0.40,(PW-4*cm)*0.42]),
+            PageBreak()]
+
+        # ── 12. FORMULES ─────────────────────────────────────────
+        story += [badge("12. RÉFÉRENCE DES FORMULES MATHÉMATIQUES", DARK), sp(),
+            Paragraph("Indice factoriel — formule générale", S["h2"]),
+            Paragraph("F_i(t,T) = SUM(j=1..k_i) w_ij * m_ij(t,T) / max_Et(m_ij(t,T))", S["frm"]),
+            Paragraph("Indice factoriel — cas Volatilité (inversé)", S["h2"]),
+            Paragraph("F_vol(t,T) = SUM(j=1..k_i) w_ij * min_Et(m_ij(t,T)) / m_ij(t,T)", S["frm"]),
+            Paragraph("Indice Multifactoriel", S["h2"]),
+            Paragraph("MF(t,T) = SUM(i=1..5) beta_i * F_i(t,T)    avec SUM(beta_i) = 1", S["frm"]),
+            Paragraph("Pondération portefeuille cible", S["h2"]),
+            Paragraph("alpha(T,t) = (n(t) - r(T,t) + 1) / ( n(t) * (n(t)+1) / 2 )", S["frm"]),
+            sp(0.3),
+            tbl([ph("Variable"), ph("Définition")],
+                [[pb("k_i"), pb("Nombre de métriques composant le facteur i")],
+                 [pb("m_ij(t,T)"), pb("Valeur de la métrique j du facteur i pour le titre T à la date t")],
+                 [pb("w_ij"), pb("Poids de la métrique j dans le facteur i  (Σw_ij = 1)")],
+                 [pb("E_t"), pb("Ensemble des titres admissibles à la date t")],
+                 [pb("beta_i"), pb("Poids du facteur i dans l'indice MF  (Σβ_i = 1)")],
+                 [pb("r(T,t)"), pb("Rang du titre T selon MF (r=1 = meilleur score)")],
+                 [pb("n(t)"), pb("Nombre total de titres admissibles à la date t")],
+                 [pb("alpha(T,t)"), pb("Pondération du titre T dans le portefeuille cible")]],
+                col_w=[(PW-4*cm)*0.20, (PW-4*cm)*0.80]),
+            PageBreak()]
+
+        # ── 13. PROBLÈMES ────────────────────────────────────────
+        story += [badge("13. RÉSOLUTION DES PROBLÈMES FRÉQUENTS", RED), sp()]
+        problems = [
+            ("❌ \"Données insuffisantes\" dans Value",
+             ['L\'année choisie (ex: 2025) n\'a pas de fondamentaux dans le Tableau de bord.',
+              'Solution : choisissez une année disponible (2019–2024) ou renseignez les données 2025.']),
+            ("❌ Score Value = 0.0000 pour tous les titres",
+             ['Toutes les métriques affichent None : les fondamentaux ne sont pas lus.',
+              'Solution : vérifiez la structure du Tableau de bord (5 blocs, tickers en ligne 0 col 2+).']),
+            ("❌ Erreur TypeError sur la Liquidité",
+             ['La feuille Volume moyen contient des colonnes non numériques (totaux, formules).',
+              'Solution : supprimez les colonnes parasites et rechargez le fichier.']),
+            ("❌ \"Aucun horizon valide\" dans Momentum",
+             ['Toutes les plages de Momentum ont Date début >= Date fin.',
+              'Solution : vérifiez que la date début est strictement antérieure à la date fin.']),
+            ("❌ Pipeline Portefeuille retourne 0 titres",
+             ['Les filtres sont trop restrictifs.',
+              'Solution : réduisez Liquidité → 0%, montez Top MF → 100%, Corrélation → 1.0.']),
+            ("❌ StreamlitAPIException sur les sélecteurs de dates",
+             ['La valeur par défaut dépasse les bornes min/max de la date.',
+              'Solution : rechargez la page (F5) — ce cas est normalement géré automatiquement.']),
+        ]
+        for title, items in problems:
+            story += [KeepTogether(
+                [Paragraph(title, S["h3"])] +
+                [Paragraph(f"→  {item}", S["bl"]) for item in items] +
+                [sp(0.4)]
+            )]
+
+        story += [hr(BLUE,1), sp(0.3),
+            Paragraph(f"CGF Gestion · Moteur Multifactoriel BRVM · v1.0 · {today}", S["cap"])]
+
+        doc.build(story)
+        buf.seek(0)
+        return buf.read()
+
+    # Génère le PDF (mis en cache)
+    pdf_bytes = generate_manual_pdf()
+
+    # Bouton de téléchargement
+    st.download_button(
+        label="⬇️ Télécharger le manuel (PDF)",
+        data=pdf_bytes,
+        file_name="Manuel_CGF_SMF_BRVM.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+    )
+
+    # Viewer inline dans un expander
+    with st.expander("👁️ Consulter le manuel", expanded=False):
+        import base64
+        b64 = base64.b64encode(pdf_bytes).decode("utf-8")
+        st.markdown(
+            f'<iframe src="data:application/pdf;base64,{b64}" '
+            f'width="100%" height="600px" style="border:1px solid #1e2d45;border-radius:6px;">'
+            f'</iframe>',
+            unsafe_allow_html=True,
+        )
 
 # ─── HEADER ───────────────────────────────────────────────────
 st.markdown("""
