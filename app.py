@@ -305,40 +305,53 @@ def compute_value_factor(data, year, weights, date_start=None, date_end=None):
     return res if not res.empty else None
 
 
-def compute_momentum_factor(data, end_date, weights):
+def compute_momentum_factor(data, horizon_ranges, weights):
     """
-    F_mom(t,T) = Σ w_h * rdt_h(t,T) / max_{E_t}(rdt_h(t,T))
-    6 horizons : J · 5J · 21J · 63J · 126J · 252J
+    F_mom(t,T) = Σ w_h * rdt_moyen_h(t,T) / max_{E_t}(rdt_moyen_h)
+
+    horizon_ranges : dict  {label: (date_start, date_end)}
+    Pour chaque horizon activé, le rendement moyen journalier est calculé
+    sur la plage [date_start, date_end] choisie par l'utilisateur.
     """
     returns = data["cours"].apply(pd.to_numeric, errors='coerce').pct_change().dropna(how='all')
-    try:
-        ed = pd.to_datetime(end_date)
-    except Exception:
-        ed = returns.index[-1]
-    sub = returns[returns.index <= ed]
 
-    horizons = {
-        "Journalier":  1,
-        "Hebdo":       5,
-        "Mensuel":     21,
-        "Trimestriel": 63,
-        "Semestriel":  126,
-        "Annuel":      252,
-    }
-    # m_ij = rendement moyen sur l'horizon h pour le titre T
-    mom_df = pd.DataFrame(
-        {h: sub.tail(n).mean(numeric_only=True) for h, n in horizons.items()}
-    ).replace([np.inf, -np.inf], np.nan)
+    mom_cols = {}
+    active_horizons = []
 
-    # Normalisation standard : m_ij / max_{E_t}(m_ij)
-    norm_df = pd.DataFrame({h: _normalise_standard(mom_df[h]) for h in horizons})
+    for h, (d_start, d_end) in horizon_ranges.items():
+        if d_start is None or d_end is None:
+            continue
+        try:
+            sd = pd.to_datetime(d_start)
+            ed = pd.to_datetime(d_end)
+        except Exception:
+            continue
+        sub = returns[(returns.index >= sd) & (returns.index <= ed)]
+        if sub.empty:
+            continue
+        rdt_moy = sub.mean(numeric_only=True).replace([np.inf, -np.inf], np.nan)
+        mom_cols[h] = rdt_moy
+        active_horizons.append(h)
 
-    # Score pondéré
-    score = sum(norm_df[h].fillna(0) * weights.get(h, 1/6) for h in horizons)
+    if not active_horizons:
+        return None
+
+    mom_df = pd.DataFrame(mom_cols)
+
+    # Normalisation : m_ij / max_{E_t}(m_ij)
+    norm_df = pd.DataFrame({h: _normalise_standard(mom_df[h]) for h in active_horizons})
+
+    # Score pondéré — renormalise les poids sur les horizons actifs
+    active_weights = {h: weights.get(h, 0) for h in active_horizons}
+    w_sum = sum(active_weights.values())
+    if w_sum > 0:
+        active_weights = {h: w/w_sum for h, w in active_weights.items()}
+
+    score = sum(norm_df[h].fillna(0) * active_weights[h] for h in active_horizons)
 
     res = pd.DataFrame({
         "Score Momentum": score,
-        **{f"Rdt {h}": mom_df[h] for h in horizons},
+        **{f"Rdt {h}": mom_df[h] for h in active_horizons},
     })
     return res.dropna(subset=["Score Momentum"]).sort_values("Score Momentum", ascending=False)
 
@@ -840,27 +853,103 @@ with t1:
 
 # ══ MOMENTUM ═══════════════════════════════════════════════════
 with t2:
-    st.markdown("<span class='pill'>Étape 1 · Facteur Momentum</span><p class='sh'>Dynamique des cours — 6 horizons</p>", unsafe_allow_html=True)
-    st.markdown("""<div class='fbox'>F_mom = Σ w_h · rdt_moyen_h / max(rdt_moyen_h) &nbsp;·&nbsp; h ∈ {J, 5J, 21J, 63J, 126J, 252J}</div>""", unsafe_allow_html=True)
+    st.markdown("<span class='pill'>Étape 1 · Facteur Momentum</span><p class='sh'>Dynamique des cours — plages libres par horizon</p>", unsafe_allow_html=True)
+    st.markdown("""<div class='fbox'>
+    F_mom(t,T) = Σ w_h · rdt_moyen_h(t,T) / max_{E_t}(rdt_moyen_h)<br>
+    Chaque horizon a sa propre plage de dates · désactivez un horizon en mettant son poids à 0
+    </div>""", unsafe_allow_html=True)
 
-    hl = ["Journalier","Hebdo","Mensuel","Trimestriel","Semestriel","Annuel"]
-    mc = st.columns(6)
-    w_mom = {h: mc[i].number_input(h, 0.0, 1.0, round(1/6,4), 0.01, key=f"wm{i}") for i,h in enumerate(hl)}
+    c_min = data["cours"].index.min().date()
+    c_max = data["cours"].index.max().date()
+
+    # Plages par défaut cohérentes avec la note technique
+    HORIZON_DEFAULTS = {
+        "Journalier":   (c_max - pd.Timedelta(days=1),   c_max),
+        "Hebdo":        (c_max - pd.Timedelta(days=7),   c_max),
+        "Mensuel":      (c_max - pd.Timedelta(days=30),  c_max),
+        "Trimestriel":  (c_max - pd.Timedelta(days=91),  c_max),
+        "Semestriel":   (c_max - pd.Timedelta(days=182), c_max),
+        "Annuel":       (c_max - pd.Timedelta(days=365), c_max),
+    }
+
+    HORIZON_LABELS = list(HORIZON_DEFAULTS.keys())
+    HORIZON_ICONS  = ["📅","📅","📅","📅","📅","📅"]
+
+    st.markdown("**📅 Plages de dates par horizon**")
+    st.caption("Définissez librement la période d'analyse pour chaque horizon · ex: Annuel sur 5 ans = du 20/05/2021 au 20/05/2026")
+
+    horizon_ranges = {}
+    horizon_weights = {}
+
+    for h in HORIZON_LABELS:
+        with st.expander(f"**{h}**", expanded=(h in ["Mensuel","Annuel"])):
+            hc1, hc2, hc3 = st.columns([1, 1, 1])
+            d_start_def = max(c_min, min(c_max, HORIZON_DEFAULTS[h][0].date()
+                              if hasattr(HORIZON_DEFAULTS[h][0], 'date')
+                              else HORIZON_DEFAULTS[h][0]))
+            d_end_def   = max(c_min, min(c_max, HORIZON_DEFAULTS[h][1].date()
+                              if hasattr(HORIZON_DEFAULTS[h][1], 'date')
+                              else HORIZON_DEFAULTS[h][1]))
+            with hc1:
+                d_start = st.date_input(f"Début", value=d_start_def,
+                                         min_value=c_min, max_value=c_max,
+                                         key=f"mom_start_{h}")
+            with hc2:
+                d_end = st.date_input(f"Fin", value=d_end_def,
+                                       min_value=c_min, max_value=c_max,
+                                       key=f"mom_end_{h}")
+            with hc3:
+                w_h = st.number_input(f"Poids w_{h[:3]}", 0.0, 1.0,
+                                       round(1/6, 4), 0.01,
+                                       key=f"mom_w_{h}")
+            if d_start < d_end:
+                horizon_ranges[h]  = (d_start, d_end)
+                horizon_weights[h] = w_h
+                nb_jours = (d_end - d_start).days
+                st.caption(f"↳ {nb_jours} jours calendaires · "
+                           f"{(d_end - d_start).days // 5 * 5 // 5} semaines environ")
+            else:
+                st.warning(f"⚠️ Date début ≥ Date fin — horizon ignoré")
+
+    w_mom_sum = round(sum(horizon_weights.values()), 4)
+    if horizon_weights:
+        if abs(w_mom_sum - 1.0) > 0.01:
+            st.warning(f"⚠️ Σ poids actifs = {w_mom_sum:.2f} ≠ 1.0 — les poids seront renormalisés automatiquement")
+        else:
+            st.success(f"✅ Σ poids = {w_mom_sum:.2f} · {len(horizon_ranges)} horizons actifs")
 
     if st.button("⚙️ Calculer le Momentum", type="primary"):
-        res = compute_momentum_factor(data, str(date_ref), w_mom)
-        fr["Momentum"] = res
-        st.success(f"✅ {len(res)} titres scorés")
+        if not horizon_ranges:
+            st.error("Aucun horizon valide configuré.")
+        else:
+            res = compute_momentum_factor(data, horizon_ranges, horizon_weights)
+            if res is not None:
+                fr["Momentum"] = res
+                st.success(f"✅ {len(res)} titres scorés · {len(horizon_ranges)} horizons")
+            else:
+                st.error("Données insuffisantes pour les périodes sélectionnées.")
 
     if "Momentum" in fr:
         res = fr["Momentum"]
-        m1,m2,m3 = st.columns(3)
-        m1.metric("Titres", len(res)); m2.metric("N°1", res.index[0]); m3.metric("Score max", f"{res['Score Momentum'].max():.4f}")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Titres",    len(res))
+        m2.metric("N°1",       res.index[0])
+        m3.metric("Score max", f"{res['Score Momentum'].max():.4f}")
+
         st.plotly_chart(score_bar(res["Score Momentum"], "#8b5cf6"), width="stretch")
+
         rdt_c = [c for c in res.columns if "Rdt" in c]
-        disp2 = res[["Score Momentum"]+rdt_c].head(20).reset_index().rename(columns={"index":"Ticker"})
-        st.dataframe(disp2.style.format({"Score Momentum":"{:.4f}"} | {c:"{:.4%}" for c in rdt_c}),
-                     width="stretch", hide_index=True)
+        disp2 = res[["Score Momentum"] + rdt_c].head(20).reset_index().rename(columns={"index": "Ticker"})
+        disp2.insert(0, "Rang", range(1, len(disp2)+1))
+        st.dataframe(disp2.style.format(
+            {"Score Momentum": "{:.4f}"} | {c: "{:.4%}" for c in rdt_c}
+        ), width="stretch", hide_index=True)
+
+        buf = io.BytesIO()
+        disp2.to_excel(buf, index=False)
+        st.download_button("⬇️ Exporter Momentum (Excel)", buf.getvalue(),
+                           "momentum.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # ══ VOLATILITÉ ═════════════════════════════════════════════════
 with t3:
