@@ -863,8 +863,8 @@ with t3:
         res = fr["Volatilité"]
         m1,m2,m3 = st.columns(3)
         m1.metric("Titre le + stable", res.index[0])
-        m2.metric("σ min", f"{res['Écart-type'].min():.4%}")
-        m3.metric("σ moy", f"{res['Écart-type'].mean():.4%}")
+        m2.metric("σ min", f"{res['Écart-type σ'].min():.4%}")
+        m3.metric("σ moy", f"{res['Écart-type σ'].mean():.4%}")
 
         l,r = st.columns(2)
         with l:
@@ -872,9 +872,9 @@ with t3:
             st.plotly_chart(score_bar(res["Score Volatilité"], "#ef4444"), width="stretch")
         with r:
             st.markdown("**Volatilité annualisée (σ×√252)**")
-            rv = res.sort_values("Écart-type")
-            fig2 = go.Figure(go.Bar(x=rv.index, y=rv["Écart-type"]*np.sqrt(252),
-                                    marker=dict(color=rv["Écart-type"]*np.sqrt(252),
+            rv = res.sort_values("Écart-type σ")
+            fig2 = go.Figure(go.Bar(x=rv.index, y=rv["σ annualisée"],
+                                    marker=dict(color=rv["σ annualisée"],
                                                 colorscale=[[0,"#10b981"],[0.5,"#f59e0b"],[1,"#ef4444"]])))
             fig2.update_layout(**{**PLOT_LAYOUT,"height":360,"yaxis":dict(gridcolor="#1e2d45",tickformat=".1%")})
             st.plotly_chart(fig2, width="stretch")
