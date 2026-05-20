@@ -637,16 +637,17 @@ with st.sidebar:
         st.markdown("**⚖️ Poids des facteurs β_i**")
         st.caption("Calibrez chaque facteur · Σβ doit = 1.0")
 
-        b_val = st.slider("💰 Value",      0.0, 1.0,
-                          st.session_state.get("b_val", 0.20), 0.01, key="b_val")
-        b_mom = st.slider("🚀 Momentum",   0.0, 1.0,
-                          st.session_state.get("b_mom", 0.20), 0.01, key="b_mom")
-        b_vol = st.slider("📉 Volatilité", 0.0, 1.0,
-                          st.session_state.get("b_vol", 0.20), 0.01, key="b_vol")
-        b_div = st.slider("💸 Dividende",  0.0, 1.0,
-                          st.session_state.get("b_div", 0.20), 0.01, key="b_div")
-        b_liq = st.slider("💧 Liquidité",  0.0, 1.0,
-                          st.session_state.get("b_liq", 0.20), 0.01, key="b_liq")
+        # Initialise les valeurs de stockage si absentes
+        for k, default in [("sv_val",0.20),("sv_mom",0.20),("sv_vol",0.20),
+                            ("sv_div",0.20),("sv_liq",0.20)]:
+            if k not in st.session_state:
+                st.session_state[k] = default
+
+        b_val = st.slider("💰 Value",      0.0, 1.0, st.session_state.sv_val, 0.01, key="b_val")
+        b_mom = st.slider("🚀 Momentum",   0.0, 1.0, st.session_state.sv_mom, 0.01, key="b_mom")
+        b_vol = st.slider("📉 Volatilité", 0.0, 1.0, st.session_state.sv_vol, 0.01, key="b_vol")
+        b_div = st.slider("💸 Dividende",  0.0, 1.0, st.session_state.sv_div, 0.01, key="b_div")
+        b_liq = st.slider("💧 Liquidité",  0.0, 1.0, st.session_state.sv_liq, 0.01, key="b_liq")
 
         bs = round(b_val + b_mom + b_vol + b_div + b_liq, 4)
         if abs(bs - 1.0) <= 0.01:
@@ -655,7 +656,8 @@ with st.sidebar:
             st.warning(f"⚠️ Σβ = {bs:.2f} ≠ 1.0")
 
         if st.button("⚖️ Égaliser (20% chacun)"):
-            for k in ["b_val","b_mom","b_vol","b_div","b_liq"]:
+            # Écriture dans les clés de stockage (pas les clés widget)
+            for k in ["sv_val","sv_mom","sv_vol","sv_div","sv_liq"]:
                 st.session_state[k] = 0.20
             st.rerun()
 
