@@ -61,7 +61,9 @@ def load_data(uploaded_bytes):
     vol_raw = pd.read_excel(xl, sheet_name="Volume moyen")
     vol_raw['Date'] = pd.to_datetime(vol_raw['Date'], errors='coerce')
     vol = vol_raw.dropna(subset=['Date']).set_index('Date').sort_index()
-    vol = vol[[c for c in tickers if c in vol.columns]]
+    # Keep only ticker columns that are numeric (exclude formula/text columns)
+    vol_ticker_cols = [c for c in tickers if c in vol.columns]
+    vol = vol[vol_ticker_cols].apply(pd.to_numeric, errors='coerce')
 
     # DIVIDENDES
     div_raw = pd.read_excel(xl, sheet_name="Historique_dividende")
@@ -230,7 +232,8 @@ def compute_dividend_factor(data, year):
                         ).sort_values("Score Dividende", ascending=False)
 
 def compute_liquidity_factor(data):
-    avg = data["volumes"].mean().replace([np.inf,-np.inf], np.nan).dropna()
+    vol_df = data["volumes"].apply(pd.to_numeric, errors='coerce')
+    avg = vol_df.mean(numeric_only=True).replace([np.inf,-np.inf], np.nan).dropna()
     mx  = avg.max()
     score = avg/mx if mx > 0 else avg
     return pd.DataFrame({"Score Liquidité": score, "Volume moyen": avg}
@@ -383,7 +386,7 @@ with t1:
         m3.metric("N°1 Value", res.index[0])
         m4.metric("Score moyen", f"{res['Score Value'].mean():.4f}")
 
-        st.plotly_chart(score_bar(res["Score Value"], "#06b6d4"), use_container_width=True)
+        st.plotly_chart(score_bar(res["Score Value"], "#06b6d4"), width="stretch")
 
         metrics_v = ["Book/Price","EPS/Price","FCF/Price","CA/Price"]
         disp = res[[c for c in ["Score Value"]+metrics_v+["Cours moy","Cap. mché (MFCFA)"] if c in res.columns]].reset_index()
@@ -391,7 +394,7 @@ with t1:
         disp.insert(0,"Rang", range(1, len(disp)+1))
         st.dataframe(disp.style.format({c:"{:.4f}" for c in metrics_v} | {"Score Value":"{:.4f}","Cours moy":"{:,.0f}","Cap. mché (MFCFA)":"{:,.0f}"}
                      ).bar(subset=["Score Value"], color=["#1e3a5f","#3b82f6"]),
-                     use_container_width=True, hide_index=True)
+                     width="stretch", hide_index=True)
 
         buf = io.BytesIO(); disp.to_excel(buf, index=False)
         st.download_button("⬇️ Exporter", buf.getvalue(), f"value_{selected_year}.xlsx",
@@ -415,11 +418,11 @@ with t2:
         res = fr["Momentum"]
         m1,m2,m3 = st.columns(3)
         m1.metric("Titres", len(res)); m2.metric("N°1", res.index[0]); m3.metric("Score max", f"{res['Score Momentum'].max():.4f}")
-        st.plotly_chart(score_bar(res["Score Momentum"], "#8b5cf6"), use_container_width=True)
+        st.plotly_chart(score_bar(res["Score Momentum"], "#8b5cf6"), width="stretch")
         rdt_c = [c for c in res.columns if "Rdt" in c]
         disp2 = res[["Score Momentum"]+rdt_c].head(20).reset_index().rename(columns={"index":"Ticker"})
         st.dataframe(disp2.style.format({"Score Momentum":"{:.4f}"} | {c:"{:.4%}" for c in rdt_c}),
-                     use_container_width=True, hide_index=True)
+                     width="stretch", hide_index=True)
 
 # ══ VOLATILITÉ ═════════════════════════════════════════════════
 with t3:
@@ -442,7 +445,7 @@ with t3:
         l,r = st.columns(2)
         with l:
             st.markdown("**Score (inversé) — Top 25**")
-            st.plotly_chart(score_bar(res["Score Volatilité"], "#ef4444"), use_container_width=True)
+            st.plotly_chart(score_bar(res["Score Volatilité"], "#ef4444"), width="stretch")
         with r:
             st.markdown("**Volatilité annualisée (σ×√252)**")
             rv = res.sort_values("Écart-type")
@@ -450,7 +453,7 @@ with t3:
                                     marker=dict(color=rv["Écart-type"]*np.sqrt(252),
                                                 colorscale=[[0,"#10b981"],[0.5,"#f59e0b"],[1,"#ef4444"]])))
             fig2.update_layout(**{**PLOT_LAYOUT,"height":360,"yaxis":dict(gridcolor="#1e2d45",tickformat=".1%")})
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, width="stretch")
 
 # ══ DIVIDENDE ══════════════════════════════════════════════════
 with t4:
@@ -482,11 +485,11 @@ with t4:
                                  text=[f"{v:.2%}" for v in res["Dividend Yield"]],
                                  textposition="outside", textfont=dict(size=9,color="#94a3b8")))
         fig_d.update_layout(**{**PLOT_LAYOUT,"height":360,"yaxis":dict(gridcolor="#1e2d45",tickformat=".1%")})
-        st.plotly_chart(fig_d, use_container_width=True)
+        st.plotly_chart(fig_d, width="stretch")
 
         st.dataframe(res.reset_index().rename(columns={"index":"Ticker"}).style.format(
             {"Score Dividende":"{:.4f}","Dividend Yield":"{:.4%}"}),
-            use_container_width=True, hide_index=True)
+            width="stretch", hide_index=True)
 
 # ══ LIQUIDITÉ ══════════════════════════════════════════════════
 with t5:
@@ -507,7 +510,7 @@ with t5:
                                  marker=dict(color=res["Score Liquidité"],
                                              colorscale=[[0,"#1e2d45"],[1,"#06b6d4"]])))
         fig_l.update_layout(**{**PLOT_LAYOUT,"height":360,"yaxis":dict(gridcolor="#1e2d45",title="Volume moy. (M FCFA)")})
-        st.plotly_chart(fig_l, use_container_width=True)
+        st.plotly_chart(fig_l, width="stretch")
 
 # ══ INDICE MULTIFACTORIEL ══════════════════════════════════════
 with t6:
@@ -532,7 +535,7 @@ with t6:
         if st.session_state.mf_scores is not None:
             mf = st.session_state.mf_scores
             st.markdown("---")
-            st.plotly_chart(score_bar(mf, "#3b82f6", height=380), use_container_width=True)
+            st.plotly_chart(score_bar(mf, "#3b82f6", height=380), width="stretch")
 
             # Stacked contribution
             st.markdown("**Décomposition factorielle — Top 15**")
@@ -548,12 +551,12 @@ with t6:
             fig_s.update_layout(barmode="stack",**{**PLOT_LAYOUT,"height":340,
                                 "legend":dict(orientation="h",y=1.08,bgcolor="rgba(0,0,0,0)"),
                                 "margin":dict(l=10,r=10,t=50,b=50)})
-            st.plotly_chart(fig_s, use_container_width=True)
+            st.plotly_chart(fig_s, width="stretch")
 
             tbl = mf.reset_index()
             tbl.columns = ["Ticker","Score MF"]
             tbl.insert(0,"Rang",range(1,len(tbl)+1))
-            st.dataframe(tbl, use_container_width=True, hide_index=True)
+            st.dataframe(tbl, width="stretch", hide_index=True)
 
             buf=io.BytesIO(); tbl.to_excel(buf,index=False)
             st.download_button("⬇️ Exporter classement MF", buf.getvalue(), "classement_MF.xlsx",
@@ -608,7 +611,7 @@ with t7:
                                     annotations=[dict(text=f"<b>{len(pw)}</b><br>titres",
                                                       x=0.5,y=0.5,font_size=14,showarrow=False,
                                                       font=dict(color="#94a3b8"))])
-                st.plotly_chart(fig_p, use_container_width=True)
+                st.plotly_chart(fig_p, width="stretch")
 
             with pr:
                 st.markdown("**Poids — Top 20**")
@@ -623,7 +626,7 @@ with t7:
                                     margin=dict(l=10,r=70,t=20,b=30),
                                     xaxis=dict(gridcolor="#1e2d45",ticksuffix="%"),
                                     yaxis=dict(autorange="reversed"))
-                st.plotly_chart(fig_h, use_container_width=True)
+                st.plotly_chart(fig_h, width="stretch")
 
             ranks = mf.drop(labels=excluded, errors='ignore').rank(ascending=False, method='min')
             alloc = pd.DataFrame({
@@ -635,7 +638,7 @@ with t7:
             }).reset_index(drop=True)
             st.dataframe(alloc.style.format({"Score MF":"{:.6f}","Poids α(T,t)":"{:.6f}","Poids (%)":"{:.4f}%"}
                          ).bar(subset=["Poids (%)"],color=["#1e3a5f","#3b82f6"]),
-                         use_container_width=True, hide_index=True)
+                         width="stretch", hide_index=True)
 
             buf = io.BytesIO(); alloc.to_excel(buf, index=False)
             st.download_button("⬇️ Exporter le portefeuille (Excel)", buf.getvalue(),
@@ -665,13 +668,13 @@ with t8:
                                  legend=dict(bgcolor="rgba(0,0,0,0)"),
                                  xaxis=dict(gridcolor="#1e2d45"), yaxis=dict(gridcolor="#1e2d45"),
                                  hovermode="x unified")
-            st.plotly_chart(fig_c, use_container_width=True)
+            st.plotly_chart(fig_c, width="stretch")
     with ti2:
-        st.dataframe(data["dividendes"].set_index("Date"), use_container_width=True)
+        st.dataframe(data["dividendes"].set_index("Date"), width="stretch")
     with ti3:
         rn = data["resultat_net"]
         rows2 = [{"Ticker":t,"Année":y,"Résultat net (MFCFA)":v/1e6}
                  for t,yrs in rn.items() for y,v in yrs.items()]
         if rows2:
             df_rn = pd.DataFrame(rows2).pivot(index="Ticker",columns="Année",values="Résultat net (MFCFA)")
-            st.dataframe(df_rn.style.format("{:,.0f}"), use_container_width=True)
+            st.dataframe(df_rn.style.format("{:,.0f}"), width="stretch")
