@@ -153,56 +153,92 @@ def _normalise_volatility(col: pd.Series) -> pd.Series:
 
 # ─── FACTOR FUNCTIONS ─────────────────────────────────────────
 
-def compute_value_factor(data, year, weights):
+def compute_value_factor(data, year, weights, date_start=None, date_end=None):
     """
     F_value(t,T) = Σ w_j * m_j(t,T) / max_{E_t}(m_j(t,T))
-    Métriques : Book/Price · EPS/Price · FCF/Price · CA/Price
+
+    Métriques (toutes exprimées par action, divisées par le cours moyen) :
+
+      1. B/P  = (Capitaux propres / Nb titres) / Cours moyen      [Book-to-Price]
+                 → plus élevé = plus sous-évalué  ✓ déjà dans le bon sens
+
+      2. E/P  = (Résultat net / Nb titres) / Cours moyen          [Earnings-to-Price]
+                 → inverse de P/E : score élevé = titre bon marché ✓
+
+      3. FCF/P = (Flux nets trésorerie / Nb titres) / Cours moyen [FCF yield]
+
+      4. CA/P  = (Chiffre d'affaires / Nb titres) / Cours moyen   [Sales yield]
+
+    Le cours moyen est calculé sur la plage [date_start, date_end] à partir
+    des cours journaliers (feuille Cours), ou sur l'année calendaire si non fournie.
     """
-    moy = data["moyenne_cours"]
-    nb  = data["nb_titres"]
-    year_row = moy[moy['Date'] == year]
-    if year_row.empty:
+    nb = data["nb_titres"]
+
+    # ── 1. Cours moyen sur la plage de dates choisie ──────────────
+    cours = data["cours"].apply(pd.to_numeric, errors="coerce")
+    if date_start is not None and date_end is not None:
+        mask = (cours.index >= pd.to_datetime(date_start)) & \
+               (cours.index <= pd.to_datetime(date_end))
+        cours_period = cours.loc[mask]
+        period_label = f"{date_start} → {date_end}"
+    else:
+        # fallback : année calendaire
+        cours_period = cours[cours.index.year == year]
+        period_label = str(year)
+
+    if cours_period.empty:
         return None
 
+    cours_moy = cours_period.mean(numeric_only=True)  # Series : ticker → cours moyen
+
+    # ── 2. Fondamentaux annuels (année sélectionnée) ───────────────
     detail = {}
     for t in data["tickers"]:
-        if t not in nb:
+        if t not in nb or nb[t] <= 0:
             continue
-        cm = year_row[t].values[0] if t in year_row.columns else np.nan
+        cm = cours_moy.get(t, np.nan)
         if pd.isna(cm) or cm <= 0:
             continue
-        cap = cm * nb[t]
-        if cap <= 0:
-            continue
-        bp  = data["capitaux_propres"].get(t, {}).get(year, np.nan)
-        eps = data["resultat_net"].get(t, {}).get(year, np.nan)
+
+        n   = nb[t]                                               # nombre de titres
+        cp  = data["capitaux_propres"].get(t, {}).get(year, np.nan)
+        rn  = data["resultat_net"].get(t, {}).get(year, np.nan)
         fcf = data["flux_treso"].get(t, {}).get(year, np.nan)
         ca  = data["chiffre_affaires"].get(t, {}).get(year, np.nan)
+
+        # Ratios par action / cours moyen
+        bp_val  = (cp  / n) / cm if pd.notna(cp)  else np.nan   # B/P  = (CP/n) / cours
+        ep_val  = (rn  / n) / cm if pd.notna(rn)  else np.nan   # E/P  = (RN/n) / cours
+        fcfp    = (fcf / n) / cm if pd.notna(fcf) else np.nan   # FCF/P
+        cap_val = (ca  / n) / cm if pd.notna(ca)  else np.nan   # CA/P
+
         detail[t] = {
-            "Book/Price": bp/cap  if pd.notna(bp)  else np.nan,
-            "EPS/Price":  eps/cap if pd.notna(eps) else np.nan,
-            "FCF/Price":  fcf/cap if pd.notna(fcf) else np.nan,
-            "CA/Price":   ca/cap  if pd.notna(ca)  else np.nan,
-            "Cours moy":  cm,
-            "Cap. mché (MFCFA)": cap/1e6,
+            "B/P  (CP/n÷cours)":   bp_val,
+            "E/P  (RN/n÷cours)":   ep_val,
+            "FCF/P (FCF/n÷cours)": fcfp,
+            "CA/P  (CA/n÷cours)":  cap_val,
+            "Cours moyen":         cm,
+            "Nb titres":           n,
         }
+
     if not detail:
         return None
 
     df      = pd.DataFrame(detail).T
-    metrics = ["Book/Price","EPS/Price","FCF/Price","CA/Price"]
+    metrics = ["B/P  (CP/n÷cours)", "E/P  (RN/n÷cours)",
+               "FCF/P (FCF/n÷cours)", "CA/P  (CA/n÷cours)"]
 
-    # Étape 1 : normalisation stricte m_ij / max_{E_t}(m_ij)
+    # ── 3. Normalisation : m_ij / max_{E_t}(m_ij) ─────────────────
     norm_df = pd.DataFrame({m: _normalise_standard(df[m]) for m in metrics})
 
-    # Étape 2 : score pondéré F_i = Σ w_j * (m_j / max)
+    # ── 4. Score pondéré F_value = Σ w_j * (m_j / max) ───────────
     score = sum(norm_df[m].fillna(0) * weights.get(m, 0) for m in metrics)
 
     res = pd.DataFrame({
-        "Score Value": score,
+        "Score Value":           score,
         **{m: df[m] for m in metrics},
-        "Cours moy": df["Cours moy"],
-        "Cap. mché (MFCFA)": df["Cap. mché (MFCFA)"],
+        "Cours moyen":           df["Cours moyen"],
+        "Période":               period_label,
     })
     return res.dropna(subset=["Score Value"]).sort_values("Score Value", ascending=False)
 
@@ -269,53 +305,84 @@ def compute_volatility_factor(data, end_date, window=252):
     }).sort_values("Score Volatilité", ascending=False)
 
 
-def compute_dividend_factor(data, year):
+def compute_dividend_factor(data, year, date_start=None, date_end=None):
     """
-    F_div(t,T) = w * DY(t,T) / max_{E_t}(DY(t,T))
-    Métrique unique : Dividend Yield = Dividende / Cours moyen annuel
+    F_div(t,T) = 1.0 * DY(t,T) / max_{E_t}(DY(t,T))
+
+    Métrique unique (w = 100%) : Dividend Yield = Dividende annuel / Cours moyen
+    Le cours moyen est calculé sur la plage [date_start, date_end].
     """
     div = data["dividendes"]
-    moy = data["moyenne_cours"]
     dr  = div[div['Date'] == year]
-    mr  = moy[moy['Date'] == year]
-    if dr.empty or mr.empty:
+    if dr.empty:
         return None
+
+    # Cours moyen sur la plage choisie
+    cours = data["cours"].apply(pd.to_numeric, errors="coerce")
+    if date_start is not None and date_end is not None:
+        mask = (cours.index >= pd.to_datetime(date_start)) & \
+               (cours.index <= pd.to_datetime(date_end))
+        cours_period = cours.loc[mask]
+    else:
+        cours_period = cours[cours.index.year == year]
+
+    if cours_period.empty:
+        return None
+
+    cours_moy = cours_period.mean(numeric_only=True)
 
     yields = {}
     for t in data["tickers"]:
-        if t not in dr.columns or t not in mr.columns:
+        if t not in dr.columns:
             continue
         d = dr[t].values[0]
-        p = mr[t].values[0]
-        if pd.notna(d) and pd.notna(p) and p > 0:
+        p = cours_moy.get(t, np.nan)
+        if pd.notna(d) and pd.notna(p) and p > 0 and d >= 0:
             yields[t] = float(d) / float(p)
+
     if not yields:
         return None
 
-    s  = pd.Series(yields)
-    # Normalisation standard : DY / max_{E_t}(DY)
+    s = pd.Series(yields)
+    # F_div = (100% × DY) / max_{E_t}(DY)   [100% = poids unique w=1]
     score = _normalise_standard(s)
 
     return pd.DataFrame({
         "Score Dividende": score,
         "Dividend Yield":  s,
+        "Cours moyen":     cours_moy.reindex(s.index),
     }).sort_values("Score Dividende", ascending=False)
 
 
-def compute_liquidity_factor(data):
+def compute_liquidity_factor(data, date_start=None, date_end=None):
     """
-    F_liq(t,T) = w * Vol(T) / max_{E_t}(Vol)
-    Métrique unique : volume moyen transigé sur l'historique complet.
-    """
-    vol_df = data["volumes"].apply(pd.to_numeric, errors='coerce')
-    avg    = vol_df.mean(numeric_only=True).replace([np.inf, -np.inf], np.nan).dropna()
+    F_liq(t,T) = 1.0 * Vol_moy(T) / max_{E_t}(Vol_moy)
 
-    # Normalisation standard : Vol / max_{E_t}(Vol)
+    Métrique unique (w = 100%) : volume moyen transigé sur la plage choisie.
+    """
+    vol_df = data["volumes"].apply(pd.to_numeric, errors="coerce")
+
+    if date_start is not None and date_end is not None:
+        mask = (vol_df.index >= pd.to_datetime(date_start)) & \
+               (vol_df.index <= pd.to_datetime(date_end))
+        vol_period = vol_df.loc[mask]
+        period_label = f"{date_start} → {date_end}"
+    else:
+        vol_period = vol_df
+        period_label = "Historique complet"
+
+    if vol_period.empty:
+        return None
+
+    avg = vol_period.mean(numeric_only=True).replace([np.inf, -np.inf], np.nan).dropna()
+
+    # F_liq = Vol_moy / max_{E_t}(Vol_moy)
     score = _normalise_standard(avg)
 
     return pd.DataFrame({
         "Score Liquidité": score,
         "Volume moyen":    avg,
+        "Période":         period_label,
     }).sort_values("Score Liquidité", ascending=False)
 
 def compute_multifactor(factor_results, betas):
@@ -436,47 +503,80 @@ t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
 # ══ VALUE ══════════════════════════════════════════════════════
 with t1:
     st.markdown("<span class='pill'>Étape 1 · Facteur Value</span><p class='sh'>Valorisation relative au cours</p>", unsafe_allow_html=True)
-    st.markdown("""<div class='fbox'>F_value(t,T) = Σ w_i · m_i(t,T) / max_E(m_i(t,T))<br>
-    Métriques : Book/Price · EPS/Price · FCF/Price · CA/Price</div>""", unsafe_allow_html=True)
+    st.markdown("""<div class='fbox'>
+    F_value(t,T) = Σ w_j · m_j(t,T) / max_{E_t}(m_j(t,T))<br><br>
+    B/P  = (Capitaux propres / Nb titres) / Cours moyen &nbsp;→&nbsp; score ↑ = sous-évalué ✓<br>
+    E/P  = (Résultat net / Nb titres) / Cours moyen &nbsp;&nbsp;&nbsp;&nbsp;→&nbsp; inverse de P/E  ✓<br>
+    FCF/P = (FCF / Nb titres) / Cours moyen<br>
+    CA/P  = (CA / Nb titres) / Cours moyen
+    </div>""", unsafe_allow_html=True)
 
-    c1,c2,c3,c4 = st.columns(4)
-    w_bp  = c1.number_input("Book/Price",  0.0,1.0,0.25,0.05)
-    w_eps = c2.number_input("EPS/Price",   0.0,1.0,0.25,0.05)
-    w_fcf = c3.number_input("FCF/Price",   0.0,1.0,0.25,0.05)
-    w_ca  = c4.number_input("CA/Price",    0.0,1.0,0.25,0.05)
-    ws = round(w_bp+w_eps+w_fcf+w_ca,4)
-    if abs(ws-1.0) > 0.01:
-        st.warning(f"Somme poids = {ws:.2f} ≠ 1.0")
+    # ── Paramètres de période ──────────────────────────────────
+    st.markdown("**📅 Période de calcul du cours moyen**")
+    vd1, vd2, vd3 = st.columns([1,1,1])
+    with vd1:
+        cours_min = data["cours"].index.min().date()
+        cours_max = data["cours"].index.max().date()
+        v_date_start = st.date_input("Date début", value=pd.Timestamp(f"{selected_year}-01-01").date(),
+                                      min_value=cours_min, max_value=cours_max, key="v_d1")
+    with vd2:
+        v_date_end   = st.date_input("Date fin",   value=pd.Timestamp(f"{selected_year}-12-31").date(),
+                                      min_value=cours_min, max_value=cours_max, key="v_d2")
+    with vd3:
+        st.markdown(f"<br><span style='font-size:11px;color:#64748b;'>"
+                    f"Fondamentaux année : <b>{selected_year}</b></span>", unsafe_allow_html=True)
+
+    # ── Pondérations ───────────────────────────────────────────
+    st.markdown("**⚖️ Pondérations des métriques**")
+    mc1, mc2, mc3, mc4 = st.columns(4)
+    w_bp  = mc1.number_input("B/P  (CP/n÷cours)",   0.0, 1.0, 0.25, 0.05, key="wbp")
+    w_eps = mc2.number_input("E/P  (RN/n÷cours)",   0.0, 1.0, 0.25, 0.05, key="wep")
+    w_fcf = mc3.number_input("FCF/P (FCF/n÷cours)", 0.0, 1.0, 0.25, 0.05, key="wfcf")
+    w_ca  = mc4.number_input("CA/P  (CA/n÷cours)",  0.0, 1.0, 0.25, 0.05, key="wca")
+
+    ws = round(w_bp + w_eps + w_fcf + w_ca, 4)
+    if abs(ws - 1.0) > 0.01:
+        st.warning(f"⚠️ Somme des poids = {ws:.2f} ≠ 1.0")
+    else:
+        st.success(f"✅ Somme des poids = {ws:.2f}")
 
     if st.button("⚙️ Calculer le Facteur Value", type="primary"):
-        weights_v = {"Book/Price":w_bp,"EPS/Price":w_eps,"FCF/Price":w_fcf,"CA/Price":w_ca}
-        res = compute_value_factor(data, selected_year, weights_v)
+        metrics_v = ["B/P  (CP/n÷cours)", "E/P  (RN/n÷cours)",
+                     "FCF/P (FCF/n÷cours)", "CA/P  (CA/n÷cours)"]
+        weights_v = dict(zip(metrics_v, [w_bp, w_eps, w_fcf, w_ca]))
+        res = compute_value_factor(data, selected_year, weights_v,
+                                   date_start=v_date_start, date_end=v_date_end)
         if res is not None:
             fr["Value"] = res
-            st.success(f"✅ {len(res)} titres scorés — Année {selected_year}")
+            st.success(f"✅ {len(res)} titres scorés · cours moyen {v_date_start} → {v_date_end} · fondamentaux {selected_year}")
         else:
-            st.error("Données insuffisantes.")
+            st.error("Données insuffisantes pour la période et l'année sélectionnées.")
 
     if "Value" in fr:
         res = fr["Value"]
-        m1,m2,m3,m4 = st.columns(4)
-        m1.metric("Titres", len(res))
-        m2.metric("Score max", f"{res['Score Value'].max():.4f}")
-        m3.metric("N°1 Value", res.index[0])
-        m4.metric("Score moyen", f"{res['Score Value'].mean():.4f}")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Titres scorés",  len(res))
+        m2.metric("Score max",      f"{res['Score Value'].max():.4f}")
+        m3.metric("N°1 Value",      res.index[0])
+        m4.metric("Score moyen",    f"{res['Score Value'].mean():.4f}")
 
         st.plotly_chart(score_bar(res["Score Value"], "#06b6d4"), width="stretch")
 
-        metrics_v = ["Book/Price","EPS/Price","FCF/Price","CA/Price"]
-        disp = res[[c for c in ["Score Value"]+metrics_v+["Cours moy","Cap. mché (MFCFA)"] if c in res.columns]].reset_index()
-        disp.columns = ["Ticker"] + [c for c in ["Score Value"]+metrics_v+["Cours moy","Cap. mché (MFCFA)"] if c in res.columns]
-        disp.insert(0,"Rang", range(1, len(disp)+1))
-        st.dataframe(disp.style.format({c:"{:.4f}" for c in metrics_v} | {"Score Value":"{:.4f}","Cours moy":"{:,.0f}","Cap. mché (MFCFA)":"{:,.0f}"}
-                     ).bar(subset=["Score Value"], color=["#1e3a5f","#3b82f6"]),
+        metrics_v = ["B/P  (CP/n÷cours)", "E/P  (RN/n÷cours)",
+                     "FCF/P (FCF/n÷cours)", "CA/P  (CA/n÷cours)"]
+        show_cols = ["Score Value"] + [m for m in metrics_v if m in res.columns] + ["Cours moyen"]
+        disp = res[show_cols].reset_index().rename(columns={"index": "Ticker"})
+        disp.insert(0, "Rang", range(1, len(disp) + 1))
+        fmt = {"Score Value": "{:.4f}", "Cours moyen": "{:,.1f}"}
+        fmt.update({m: "{:.6f}" for m in metrics_v})
+        st.dataframe(disp.style.format(fmt).bar(subset=["Score Value"],
+                     color=["#1e3a5f", "#3b82f6"]),
                      width="stretch", hide_index=True)
 
-        buf = io.BytesIO(); disp.to_excel(buf, index=False)
-        st.download_button("⬇️ Exporter", buf.getvalue(), f"value_{selected_year}.xlsx",
+        buf = io.BytesIO()
+        disp.to_excel(buf, index=False)
+        st.download_button("⬇️ Exporter Value (Excel)", buf.getvalue(),
+                           f"value_{selected_year}_{v_date_start}_{v_date_end}.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # ══ MOMENTUM ═══════════════════════════════════════════════════
@@ -536,60 +636,127 @@ with t3:
 
 # ══ DIVIDENDE ══════════════════════════════════════════════════
 with t4:
-    st.markdown("<span class='pill'>Étape 1 · Facteur Dividende</span><p class='sh'>Dividend Yield = Dividende / Cours moyen</p>", unsafe_allow_html=True)
+    st.markdown("<span class='pill'>Étape 1 · Facteur Dividende</span><p class='sh'>Dividend Yield = Dividende annuel / Cours moyen</p>", unsafe_allow_html=True)
+    st.markdown("""<div class='fbox'>
+    F_div(t,T) = 1.0 × DY(t,T) / max_{E_t}(DY(t,T))<br>
+    Métrique unique (w = 100%) : DY = Dividende annuel versé / Cours moyen sur la période
+    </div>""", unsafe_allow_html=True)
 
     div_years = sorted(data["dividendes"]["Date"].dropna().astype(int).unique(), reverse=True)
-    div_yr = st.selectbox("Année dividende", div_years)
+    dd1, dd2, dd3 = st.columns([1, 1, 1])
+    with dd1:
+        div_yr = st.selectbox("Année du dividende", div_years, key="div_yr")
+    with dd2:
+        d_date_start = st.date_input("Cours moyen — Date début",
+                                      value=pd.Timestamp(f"{div_years[0]}-01-01").date(),
+                                      min_value=data["cours"].index.min().date(),
+                                      max_value=data["cours"].index.max().date(), key="dd1")
+    with dd3:
+        d_date_end   = st.date_input("Cours moyen — Date fin",
+                                      value=pd.Timestamp(f"{div_years[0]}-12-31").date(),
+                                      min_value=data["cours"].index.min().date(),
+                                      max_value=data["cours"].index.max().date(), key="dd2")
 
     if st.button("⚙️ Calculer le Dividende", type="primary"):
-        res = compute_dividend_factor(data, div_yr)
+        res = compute_dividend_factor(data, div_yr,
+                                       date_start=d_date_start, date_end=d_date_end)
         if res is not None:
             fr["Dividende"] = res
-            paying = len(res[res["Dividend Yield"]>0])
-            st.success(f"✅ {len(res)} titres · {paying} payeurs de dividende")
+            paying = len(res[res["Dividend Yield"] > 0])
+            st.success(f"✅ {len(res)} titres · {paying} payeurs · cours moyen {d_date_start} → {d_date_end}")
         else:
-            st.error("Données insuffisantes.")
+            st.error("Données insuffisantes pour la période sélectionnée.")
 
     if "Dividende" in fr:
         res = fr["Dividende"]
-        paying = res[res["Dividend Yield"]>0]
-        m1,m2,m3 = st.columns(3)
-        m1.metric("Payeurs", len(paying))
+        paying = res[res["Dividend Yield"] > 0]
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Payeurs de dividende", len(paying))
         m2.metric("Yield max", f"{res['Dividend Yield'].max():.2%}")
         m3.metric("N°1 Dividende", res.index[0])
 
-        fig_d = go.Figure(go.Bar(x=res.index, y=res["Dividend Yield"],
-                                 marker=dict(color=res["Dividend Yield"],
-                                             colorscale=[[0,"#1e2d45"],[1,"#f59e0b"]]),
-                                 text=[f"{v:.2%}" for v in res["Dividend Yield"]],
-                                 textposition="outside", textfont=dict(size=9,color="#94a3b8")))
-        fig_d.update_layout(**{**PLOT_LAYOUT,"height":360,"yaxis":dict(gridcolor="#1e2d45",tickformat=".1%")})
+        fig_d = go.Figure(go.Bar(
+            x=res.index, y=res["Dividend Yield"],
+            marker=dict(color=res["Dividend Yield"],
+                        colorscale=[[0,"#1e2d45"],[1,"#f59e0b"]]),
+            text=[f"{v:.2%}" for v in res["Dividend Yield"]],
+            textposition="outside", textfont=dict(size=9, color="#94a3b8")))
+        fig_d.update_layout(**{**PLOT_LAYOUT, "height": 360,
+                               "yaxis": dict(gridcolor="#1e2d45", tickformat=".1%")})
         st.plotly_chart(fig_d, width="stretch")
 
-        st.dataframe(res.reset_index().rename(columns={"index":"Ticker"}).style.format(
-            {"Score Dividende":"{:.4f}","Dividend Yield":"{:.4%}"}),
-            width="stretch", hide_index=True)
+        disp_d = res.reset_index().rename(columns={"index": "Ticker"})
+        disp_d.insert(0, "Rang", range(1, len(disp_d)+1))
+        st.dataframe(disp_d.style.format({
+            "Score Dividende": "{:.4f}",
+            "Dividend Yield":  "{:.4%}",
+            "Cours moyen":     "{:,.1f}",
+        }), width="stretch", hide_index=True)
+
+        buf = io.BytesIO()
+        disp_d.to_excel(buf, index=False)
+        st.download_button("⬇️ Exporter Dividende (Excel)", buf.getvalue(),
+                           f"dividende_{div_yr}.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # ══ LIQUIDITÉ ══════════════════════════════════════════════════
 with t5:
-    st.markdown("<span class='pill'>Étape 1 · Facteur Liquidité</span><p class='sh'>Volume moyen transigé</p>", unsafe_allow_html=True)
+    st.markdown("<span class='pill'>Étape 1 · Facteur Liquidité</span><p class='sh'>Volume moyen transigé sur la période</p>", unsafe_allow_html=True)
+    st.markdown("""<div class='fbox'>
+    F_liq(t,T) = 1.0 × Vol_moy(T) / max_{E_t}(Vol_moy)<br>
+    Métrique unique (w = 100%) : volume moyen transigé calculé sur la plage de dates choisie
+    </div>""", unsafe_allow_html=True)
+
+    ll1, ll2 = st.columns(2)
+    with ll1:
+        l_date_start = st.date_input("Date début",
+                                      value=data["volumes"].index.min().date(),
+                                      min_value=data["volumes"].index.min().date(),
+                                      max_value=data["volumes"].index.max().date(), key="ld1")
+    with ll2:
+        l_date_end   = st.date_input("Date fin",
+                                      value=data["volumes"].index.max().date(),
+                                      min_value=data["volumes"].index.min().date(),
+                                      max_value=data["volumes"].index.max().date(), key="ld2")
 
     if st.button("⚙️ Calculer la Liquidité", type="primary"):
-        res = compute_liquidity_factor(data)
-        fr["Liquidité"] = res
-        st.success(f"✅ {len(res)} titres scorés")
+        res = compute_liquidity_factor(data, date_start=l_date_start, date_end=l_date_end)
+        if res is not None:
+            fr["Liquidité"] = res
+            st.success(f"✅ {len(res)} titres scorés · période {l_date_start} → {l_date_end}")
+        else:
+            st.error("Données insuffisantes pour la période sélectionnée.")
 
     if "Liquidité" in fr:
         res = fr["Liquidité"]
-        m1,m2 = st.columns(2)
-        m1.metric("Titre + liquide", res.index[0])
-        m2.metric("Vol. moyen max", f"{res['Volume moyen'].max()/1e6:.0f} M FCFA")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Titre le + liquide", res.index[0])
+        m2.metric("Vol. moyen max",  f"{res['Volume moyen'].max()/1e6:.1f} M FCFA")
+        m3.metric("Score max",       f"{res['Score Liquidité'].max():.4f}")
 
-        fig_l = go.Figure(go.Bar(x=res.index, y=res["Volume moyen"]/1e6,
-                                 marker=dict(color=res["Score Liquidité"],
-                                             colorscale=[[0,"#1e2d45"],[1,"#06b6d4"]])))
-        fig_l.update_layout(**{**PLOT_LAYOUT,"height":360,"yaxis":dict(gridcolor="#1e2d45",title="Volume moy. (M FCFA)")})
+        fig_l = go.Figure(go.Bar(
+            x=res.index, y=res["Volume moyen"] / 1e6,
+            marker=dict(color=res["Score Liquidité"],
+                        colorscale=[[0,"#1e2d45"],[1,"#06b6d4"]]),
+            text=(res["Volume moyen"]/1e6).round(1),
+            textposition="outside", textfont=dict(size=9, color="#94a3b8"),
+        ))
+        fig_l.update_layout(**{**PLOT_LAYOUT, "height": 360,
+                               "yaxis": dict(gridcolor="#1e2d45", title="Volume moy. (M FCFA)")})
         st.plotly_chart(fig_l, width="stretch")
+
+        disp_l = res[["Score Liquidité","Volume moyen"]].reset_index().rename(columns={"index":"Ticker"})
+        disp_l.insert(0, "Rang", range(1, len(disp_l)+1))
+        st.dataframe(disp_l.style.format({
+            "Score Liquidité": "{:.4f}",
+            "Volume moyen":    "{:,.0f}",
+        }), width="stretch", hide_index=True)
+
+        buf = io.BytesIO()
+        disp_l.to_excel(buf, index=False)
+        st.download_button("⬇️ Exporter Liquidité (Excel)", buf.getvalue(),
+                           f"liquidite_{l_date_start}_{l_date_end}.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # ══ INDICE MULTIFACTORIEL ══════════════════════════════════════
 with t6:
