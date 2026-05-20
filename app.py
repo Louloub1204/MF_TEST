@@ -4,6 +4,9 @@ import numpy as np
 import plotly.graph_objects as go
 import io
 import warnings
+from scipy.optimize import minimize
+from scipy.cluster.hierarchy import linkage, fcluster
+from scipy.spatial.distance import squareform
 warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="CGF Gestion · SMF BRVM", page_icon="📊",
@@ -392,7 +395,162 @@ def compute_liquidity_factor(data, date_start=None, date_end=None):
         "Période":         period_label,
     }).sort_values("Score Liquidité", ascending=False)
 
-def compute_multifactor(factor_results, betas):
+# ─── OPTIMISATION DE L'UNIVERS ────────────────────────────────
+
+def filter_liquidity(mf_scores, liq_factor_result, min_vol_pct):
+    """
+    Filtre 1 — Liquidité minimale.
+    Garde les titres dont le volume moyen dépasse min_vol_pct% du volume max.
+    """
+    if liq_factor_result is None or min_vol_pct <= 0:
+        return mf_scores.index.tolist()
+    vol = liq_factor_result["Volume moyen"]
+    threshold = vol.max() * (min_vol_pct / 100)
+    liquid = vol[vol >= threshold].index.tolist()
+    return [t for t in mf_scores.index if t in liquid]
+
+
+def filter_mf_percentile(mf_scores, universe, top_pct):
+    """
+    Filtre 2 — Seuil Score MF.
+    Garde les titres dans le top top_pct% de l'univers courant.
+    """
+    sub = mf_scores.reindex(universe).dropna()
+    if sub.empty or top_pct >= 100:
+        return universe
+    threshold = sub.quantile(1 - top_pct / 100)
+    return sub[sub >= threshold].index.tolist()
+
+
+def filter_correlation(mf_scores, universe, cours_df, max_corr, window=252):
+    """
+    Filtre 3 — Diversification par corrélation.
+    Clustering hiérarchique sur la matrice de corrélations.
+    Dans chaque cluster, seul le titre avec le meilleur score MF est retenu.
+    max_corr : seuil de corrélation (0→1). Plus bas = plus diversifié.
+    """
+    if len(universe) < 3 or max_corr >= 1.0:
+        return universe
+
+    ret = cours_df[universe].apply(pd.to_numeric, errors="coerce").pct_change().dropna(how="all")
+    ret = ret.tail(window).dropna(axis=1, thresh=int(window * 0.5))
+    valid = [t for t in universe if t in ret.columns]
+    if len(valid) < 3:
+        return universe
+
+    corr = ret[valid].corr().fillna(0)
+    dist = np.clip(1 - corr.values, 0, 2)
+    np.fill_diagonal(dist, 0)
+    condensed = squareform(dist)
+
+    Z = linkage(condensed, method="ward")
+    # Nombre de clusters : distance seuil = 1 - max_corr
+    labels = fcluster(Z, t=(1 - max_corr), criterion="distance")
+
+    # Pour chaque cluster, garder le titre au meilleur score MF
+    selected = []
+    sub_mf = mf_scores.reindex(valid)
+    for cluster_id in np.unique(labels):
+        members = [valid[i] for i, l in enumerate(labels) if l == cluster_id]
+        best = sub_mf.reindex(members).idxmax()
+        if pd.notna(best):
+            selected.append(best)
+    return selected
+
+
+def optimize_markowitz(mf_scores, universe, cours_df,
+                       window=252, risk_aversion=1.0,
+                       mf_weight=0.5, min_w=0.0, max_w=1.0):
+    """
+    Filtre 4 — Optimisation Mean-Variance avec intégration du score MF.
+    Maximise : mf_weight * MF_score_portefeuille - (1-mf_weight) * λ * variance
+    Retourne les poids optimaux (Series ticker→poids).
+    """
+    ret = cours_df[universe].apply(pd.to_numeric, errors="coerce").pct_change().dropna(how="all")
+    ret = ret.tail(window).dropna(axis=1, thresh=int(window * 0.5))
+    valid = [t for t in universe if t in ret.columns]
+
+    if len(valid) < 2:
+        # Pas assez de données → revenir aux poids MF rank
+        return None
+
+    ret_valid = ret[valid]
+    mu  = ret_valid.mean().values       # rendements moyens
+    Sigma = ret_valid.cov().values      # matrice de covariance
+    mf_vec = mf_scores.reindex(valid).fillna(0).values  # scores MF normalisés
+
+    n = len(valid)
+    w0 = np.ones(n) / n                # départ équipondéré
+
+    def neg_utility(w):
+        port_mf  = mf_weight * (w @ mf_vec)
+        port_var = (1 - mf_weight) * risk_aversion * (w @ Sigma @ w)
+        return -(port_mf - port_var)
+
+    constraints = [{"type": "eq", "fun": lambda w: w.sum() - 1}]
+    bounds = [(min_w, max_w)] * n
+
+    res = minimize(neg_utility, w0, method="SLSQP",
+                   bounds=bounds, constraints=constraints,
+                   options={"maxiter": 500, "ftol": 1e-9})
+
+    if not res.success:
+        return None
+
+    w_opt = pd.Series(res.x, index=valid)
+    w_opt = w_opt[w_opt > 1e-4]        # drop poids négligeables
+    w_opt = w_opt / w_opt.sum()        # renormalise
+    return w_opt.sort_values(ascending=False)
+
+
+def run_optimization_pipeline(mf_scores, data, factor_results,
+                              min_vol_pct, top_pct, max_corr,
+                              use_markowitz, risk_aversion, mf_weight,
+                              min_w, max_w, window):
+    """
+    Pipeline séquentiel des 4 filtres.
+    Retourne (universe_final, weights, étapes_log).
+    """
+    log = []
+    universe = mf_scores.index.tolist()
+    log.append(("Univers initial", len(universe), universe))
+
+    # Filtre 1 — Liquidité
+    liq = factor_results.get("Liquidité")
+    universe = filter_liquidity(mf_scores, liq, min_vol_pct)
+    log.append(("① Filtre Liquidité", len(universe), universe))
+
+    # Filtre 2 — Score MF
+    universe = filter_mf_percentile(mf_scores, universe, top_pct)
+    log.append(("② Filtre Score MF", len(universe), universe))
+
+    # Filtre 3 — Corrélation
+    universe = filter_correlation(mf_scores, universe,
+                                  data["cours"], max_corr, window)
+    log.append(("③ Filtre Corrélation", len(universe), universe))
+
+    if len(universe) == 0:
+        return [], None, log
+
+    # Filtre 4 — Poids optimaux
+    if use_markowitz:
+        weights = optimize_markowitz(mf_scores, universe, data["cours"],
+                                     window=window, risk_aversion=risk_aversion,
+                                     mf_weight=mf_weight, min_w=min_w, max_w=max_w)
+        if weights is None:
+            # Fallback : poids MF rank
+            weights = compute_portfolio_weights(mf_scores, included=universe)
+            log.append(("④ Markowitz (fallback → rang MF)", len(weights), weights.index.tolist()))
+        else:
+            log.append(("④ Markowitz", len(weights), weights.index.tolist()))
+    else:
+        weights = compute_portfolio_weights(mf_scores, included=universe)
+        log.append(("④ Poids rang MF", len(weights), weights.index.tolist()))
+
+    return universe, weights, log
+
+
+# ─── MULTIFACTOR & PORTFOLIO ──────────────────────────────────
     all_t = set()
     for df in factor_results.values():
         if df is not None:
@@ -881,8 +1039,11 @@ with t6:
 # ══ PORTEFEUILLE ═══════════════════════════════════════════════
 with t7:
     st.markdown("<span class='pill'>Étape 3</span><p class='sh'>Construction du Portefeuille Cible</p>", unsafe_allow_html=True)
-    st.markdown("""<div class='fbox'>α(T,t) = (n − r(T,t) + 1) / (n·(n+1)/2)<br>
-    Propriété : Σ α = 1 · le meilleur titre MF reçoit le poids maximum</div>""", unsafe_allow_html=True)
+    st.markdown("""<div class='fbox'>
+    Pipeline d'optimisation séquentiel :<br>
+    Univers complet → ① Liquidité → ② Score MF → ③ Corrélation → ④ Poids optimaux<br>
+    Pondération finale : α(T,t) = (n−r+1)/(n(n+1)/2) &nbsp;ou&nbsp; Markowitz MF-augmenté
+    </div>""", unsafe_allow_html=True)
 
     if st.session_state.mf_scores is None:
         st.info("👈 Calculez d'abord l'Indice MF (onglet 🔢).")
@@ -890,52 +1051,148 @@ with t7:
         mf = st.session_state.mf_scores
         all_tickers = mf.index.tolist()
 
-        p1, p2 = st.columns([3, 1])
-        with p1:
-            included = st.multiselect(
-                "✅ Titres à inclure dans le portefeuille",
-                options=all_tickers,
-                default=all_tickers,          # tous inclus par défaut
-                help="Sélectionnez uniquement les titres que vous souhaitez dans le portefeuille cible. "
-                     "Les pondérations α sont recalculées sur cet univers restreint."
+        # ── Sélection manuelle (override) ─────────────────────────
+        with st.expander("🔧 Sélection manuelle des titres (optionnel — écrase les filtres)", expanded=False):
+            manual_mode = st.checkbox("Activer la sélection manuelle", value=False)
+            if manual_mode:
+                manual_included = st.multiselect(
+                    "✅ Titres à inclure",
+                    options=all_tickers,
+                    default=all_tickers,
+                )
+
+        st.markdown("---")
+
+        # ── Paramètres des filtres ─────────────────────────────────
+        st.markdown("**⚙️ Paramètres du pipeline d'optimisation**")
+
+        col_f1, col_f2, col_f3 = st.columns(3)
+
+        with col_f1:
+            st.markdown("**① Filtre Liquidité**")
+            min_vol_pct = st.slider(
+                "Volume moyen ≥ X% du max",
+                0, 50, 10, 1,
+                help="0% = pas de filtre · 20% = garde les titres avec au moins 20% du volume du titre le plus liquide"
             )
-        with p2:
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("↩️ Tout sélectionner"):
-                st.session_state["ptf_included"] = all_tickers
-                st.rerun()
+            liq_ok = "Liquidité" in fr
+            if not liq_ok:
+                st.caption("⚠️ Calculez le facteur Liquidité pour activer ce filtre")
 
-        n_included = len(included)
-        n_total    = len(all_tickers)
-        if n_included == 0:
-            st.warning("⚠️ Sélectionnez au moins un titre.")
+        with col_f2:
+            st.markdown("**② Filtre Score MF**")
+            top_pct = st.slider(
+                "Garder le top X% des scores MF",
+                10, 100, 60, 5,
+                help="60% = garde les 60% de titres avec les meilleurs scores MF"
+            )
+
+        with col_f3:
+            st.markdown("**③ Filtre Corrélation**")
+            max_corr = st.slider(
+                "Corrélation max entre titres",
+                0.3, 1.0, 0.75, 0.05,
+                help="0.75 = deux titres corrélés à plus de 75% → on garde le meilleur"
+            )
+            window_corr = st.number_input("Fenêtre (jours)", 60, 504, 252, 21,
+                                          key="win_corr")
+
+        st.markdown("---")
+        st.markdown("**④ Pondération finale**")
+        use_mkz = st.toggle("Optimisation Markowitz MF-augmentée", value=False,
+                             help="OFF = poids par rang MF (formule de la note technique)\nON = optimisation Mean-Variance avec score MF intégré dans l'utilité")
+
+        if use_mkz:
+            mk1, mk2, mk3, mk4 = st.columns(4)
+            mf_weight     = mk1.slider("Poids Score MF dans l'utilité",  0.0, 1.0, 0.50, 0.05,
+                                        help="0 = pure minimisation variance · 1 = pure maximisation score MF")
+            risk_aversion = mk2.slider("Aversion au risque λ",           0.1, 10.0, 2.0, 0.1)
+            min_w         = mk3.slider("Poids min par titre (%)",         0, 20, 0, 1) / 100
+            max_w         = mk4.slider("Poids max par titre (%)",         5, 100, 40, 5) / 100
         else:
-            if n_included < n_total:
-                st.info(f"ℹ️ {n_included} titres inclus sur {n_total} · "
-                        f"{n_total - n_included} exclus de l'univers")
+            mf_weight, risk_aversion, min_w, max_w = 0.5, 2.0, 0.0, 1.0
+
+        st.markdown("---")
+
+        if st.button("🚀 Lancer l'optimisation", type="primary"):
+            with st.spinner("Optimisation en cours..."):
+                if manual_mode:
+                    # Mode manuel : bypass des filtres
+                    inc = manual_included if manual_included else all_tickers
+                    if use_mkz:
+                        pw = optimize_markowitz(
+                            mf, inc, data["cours"],
+                            window=int(window_corr),
+                            risk_aversion=risk_aversion,
+                            mf_weight=mf_weight,
+                            min_w=min_w, max_w=max_w
+                        )
+                        if pw is None:
+                            pw = compute_portfolio_weights(mf, included=inc)
+                    else:
+                        pw = compute_portfolio_weights(mf, included=inc)
+                    pipeline_log = [("Sélection manuelle", len(inc), inc),
+                                    ("Poids optimaux", len(pw), pw.index.tolist())]
+                else:
+                    inc, pw, pipeline_log = run_optimization_pipeline(
+                        mf_scores     = mf,
+                        data          = data,
+                        factor_results= fr,
+                        min_vol_pct   = min_vol_pct if liq_ok else 0,
+                        top_pct       = top_pct,
+                        max_corr      = max_corr,
+                        use_markowitz = use_mkz,
+                        risk_aversion = risk_aversion,
+                        mf_weight     = mf_weight,
+                        min_w         = min_w,
+                        max_w         = max_w,
+                        window        = int(window_corr),
+                    )
+
+            if pw is None or len(pw) == 0:
+                st.error("❌ Le pipeline n'a retenu aucun titre. Élargissez les seuils des filtres.")
             else:
-                st.success(f"✅ Univers complet : {n_included} titres")
+                st.session_state.pw        = pw
+                st.session_state.pw_log    = pipeline_log
+                st.session_state.pw_use_mkz= use_mkz
+                st.success(f"✅ Portefeuille optimal : {len(pw)} titres · Σα = {pw.sum():.6f}")
 
-            if st.button("📂 Construire le portefeuille", type="primary"):
-                pw = compute_portfolio_weights(mf, included=included)
-                st.session_state.pw = pw
-                st.session_state.pw_included = included
-                st.success(f"✅ {len(pw)} titres · Σα = {pw.sum():.6f}")
+        # ── Résultats ──────────────────────────────────────────────
+        if st.session_state.pw is not None:
+            pw  = st.session_state.pw
+            log = st.session_state.get("pw_log", [])
 
-        if st.session_state.pw is not None and n_included > 0:
-            pw       = st.session_state.pw
-            inc_used = st.session_state.get("pw_included", all_tickers)
+            # Pipeline log
+            if log:
+                st.markdown("**🔍 Trace du pipeline**")
+                log_cols = st.columns(len(log))
+                colors_log = ["#475569","#3b82f6","#8b5cf6","#06b6d4","#10b981"]
+                for i, (step, n_step, _) in enumerate(log):
+                    with log_cols[i]:
+                        st.markdown(
+                            f"<div style='background:#161d2e;border:1px solid #1e2d45;"
+                            f"border-radius:8px;padding:10px;text-align:center;'>"
+                            f"<div style='font-size:10px;color:{colors_log[i % len(colors_log)]};font-weight:600;"
+                            f"letter-spacing:.08em;text-transform:uppercase;'>{step}</div>"
+                            f"<div style='font-size:24px;font-weight:800;color:#e2e8f0;'>{n_step}</div>"
+                            f"<div style='font-size:10px;color:#64748b;'>titres</div></div>",
+                            unsafe_allow_html=True
+                        )
 
-            k1, k2, k3, k4 = st.columns(4)
-            k1.metric("Nb titres", len(pw))
-            k2.metric("Poids max", f"{pw.max()*100:.2f}%")
-            k3.metric("Poids min", f"{pw.min()*100:.2f}%")
-            k4.metric("HHI concentration", f"{(pw**2).sum():.4f}")
             st.markdown("---")
+
+            # KPIs
+            k1, k2, k3, k4, k5 = st.columns(5)
+            k1.metric("Nb titres",         len(pw))
+            k2.metric("Poids max",         f"{pw.max()*100:.2f}%")
+            k3.metric("Poids min",         f"{pw.min()*100:.2f}%")
+            k4.metric("HHI concentration", f"{(pw**2).sum():.4f}")
+            k5.metric("Méthode",
+                      "Markowitz" if st.session_state.get("pw_use_mkz") else "Rang MF")
 
             pl, pr = st.columns(2)
             with pl:
-                st.markdown("**Répartition**")
+                st.markdown("**Répartition du portefeuille**")
                 dpw = pw.copy()
                 if len(dpw) > 15:
                     dpw = pd.concat([dpw.head(15),
@@ -958,8 +1215,8 @@ with t7:
                 st.plotly_chart(fig_p, width="stretch")
 
             with pr:
-                st.markdown("**Poids — Top 20**")
-                pt = pw.head(20)
+                st.markdown("**Poids par titre**")
+                pt = pw.head(25)
                 fig_h = go.Figure(go.Bar(
                     x=pt.values * 100, y=pt.index, orientation="h",
                     marker=dict(color=np.linspace(0.9, 0.2, len(pt)),
@@ -970,23 +1227,24 @@ with t7:
                 ))
                 fig_h.update_layout(
                     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    height=440, font=dict(color="#94a3b8", family="JetBrains Mono"),
-                    margin=dict(l=10, r=70, t=20, b=30),
+                    height=480, font=dict(color="#94a3b8", family="JetBrains Mono"),
+                    margin=dict(l=10, r=80, t=20, b=30),
                     xaxis=dict(gridcolor="#1e2d45", ticksuffix="%"),
                     yaxis=dict(autorange="reversed")
                 )
                 st.plotly_chart(fig_h, width="stretch")
 
-            # Table d'allocation complète
-            ranks_inc = mf.reindex(inc_used).dropna().rank(ascending=False, method='min')
+            # Table d'allocation
+            ranks_final = mf.reindex(pw.index).rank(ascending=False, method='min')
             alloc = pd.DataFrame({
-                "Ticker":      pw.index,
-                "Rang r(T,t)": ranks_inc.loc[pw.index].astype(int),
-                "Score MF":    mf.loc[pw.index].round(6),
+                "Ticker":       pw.index,
+                "Rang MF":      ranks_final.loc[pw.index].astype(int),
+                "Score MF":     mf.loc[pw.index].round(6),
                 "Poids α(T,t)": pw.values,
-                "Poids (%)":   (pw.values * 100).round(4),
+                "Poids (%)":    (pw.values * 100).round(4),
             }).reset_index(drop=True)
 
+            st.markdown("**Table d'allocation complète**")
             st.dataframe(
                 alloc.style.format({
                     "Score MF":     "{:.6f}",
@@ -1000,7 +1258,7 @@ with t7:
             alloc.to_excel(buf, index=False)
             st.download_button(
                 "⬇️ Exporter le portefeuille (Excel)", buf.getvalue(),
-                "portefeuille_BRVM.xlsx",
+                "portefeuille_optimal_BRVM.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
