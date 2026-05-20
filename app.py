@@ -81,43 +81,83 @@ def load_data(uploaded_bytes):
     moy['Date'] = moy['Date'].astype(int)
 
     # NB TITRES
-    nb_raw = pd.read_excel(xl, sheet_name="Nb_titres")
+    # Structure réelle (header=None) :
+    #   Ligne 0 : [NaN, 'Date', 'CABC', 'FTSC', ...]
+    #   Ligne 1 : [NaN, 'Titres flottants', val, val, ...]
+    #   Ligne 2 : [NaN, 'Nombre de titres', val, val, ...]
+    nb_raw = pd.read_excel(xl, sheet_name="Nb_titres", header=None)
     nb_titres, nb_flottant = {}, {}
-    for _, row in nb_raw.iterrows():
-        label = str(row.get('Date', '')).strip().lower()
-        for t in tickers:
-            if t in nb_raw.columns:
-                v = row.get(t, np.nan)
-                if pd.notna(v):
+    nb_ticker_col = {}
+    for col_idx in range(2, nb_raw.shape[1]):
+        val = nb_raw.iloc[0, col_idx]
+        if pd.notna(val):
+            nb_ticker_col[str(val).strip()] = col_idx
+    for row_idx in range(1, nb_raw.shape[0]):
+        label = str(nb_raw.iloc[row_idx, 1]).strip().lower()
+        for t, col_idx in nb_ticker_col.items():
+            v = nb_raw.iloc[row_idx, col_idx]
+            try:
+                v = float(v)
+                if not np.isnan(v) and v > 0:
                     if 'flottant' in label:
-                        nb_flottant[t] = float(v)
+                        nb_flottant[t] = v
                     elif 'nombre' in label:
-                        nb_titres[t] = float(v)
+                        nb_titres[t] = v
+            except (TypeError, ValueError):
+                pass
 
-    # TABLEAU DE BORD
-    tb = pd.read_excel(xl, sheet_name="Tableau de bord")
-    tb_tickers = [c for c in tickers if c in tb.columns]
+    # TABLEAU DE BORD (fondamentaux)
+    # Structure réelle (header=None) :
+    #   Ligne 0 : [NaN, 1000000, 'CABC', 'FTSC', ...]  ← tickers col 2+
+    #   Col 1   : années (2019..2024) ou NaN
+    #   Col 2   : label métrique ('CAPITAUX PROPRES') ou valeur numérique
+    #   Lignes label : col1=NaN, col2='CAPITAUX PROPRES'
+    #   Lignes data  : col1=année, col2+=valeurs par ticker
+    tb_raw = pd.read_excel(xl, sheet_name="Tableau de bord", header=None)
 
-    def extract_metric(label):
+    ticker_col = {}
+    for col_idx in range(2, tb_raw.shape[1]):
+        val = tb_raw.iloc[0, col_idx]
+        if pd.notna(val) and str(val).strip() not in ["nan", ""]:
+            ticker_col[str(val).strip()] = col_idx
+
+    def extract_metric(label_keyword):
         result = {}
-        header = None
-        for idx, row in tb.iterrows():
-            val = str(row.get(tb.columns[2], '')).strip().upper()
-            if label.upper() in val:
-                header = idx
-                break
-        if header is None:
-            return result
-        for idx2 in range(header + 1, min(header + 8, len(tb))):
-            row = tb.iloc[idx2]
-            yr = row.get(tb.columns[1], np.nan)
-            if pd.isna(yr):
-                break
-            year = int(yr)
-            for t in tb_tickers:
-                v = row.get(t, np.nan)
-                if pd.notna(v):
-                    result.setdefault(t, {})[year] = float(v)
+        in_block = False
+        for row_idx in range(1, tb_raw.shape[0]):
+            cell2 = str(tb_raw.iloc[row_idx, 2]).strip().upper()
+            cell1 = tb_raw.iloc[row_idx, 1]
+
+            # Détection du label de la métrique
+            if label_keyword.upper() in cell2 and pd.isna(cell1):
+                in_block = True
+                continue
+
+            if in_block:
+                try:
+                    year = int(float(cell1)) if pd.notna(cell1) else None
+                except (ValueError, TypeError):
+                    year = None
+
+                if year is None:
+                    # Ligne de tickers répétée (ex: row avec 'CABC','FTSC'...) → ignorer
+                    if cell2 in ticker_col:
+                        continue
+                    # Nouveau label métrique → fin du bloc
+                    if pd.isna(cell1) and cell2 not in ["NAN", ""]:
+                        break
+                    continue
+
+                # Lire les valeurs pour chaque ticker (col 2+ de tb_raw)
+                for t, col_idx in ticker_col.items():
+                    if col_idx < tb_raw.shape[1]:
+                        v = tb_raw.iloc[row_idx, col_idx]
+                        try:
+                            v = float(v)
+                            if not np.isnan(v):
+                                result.setdefault(t, {})[year] = v
+                        except (TypeError, ValueError):
+                            pass
         return result
 
     return {
