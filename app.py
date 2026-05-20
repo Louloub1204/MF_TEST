@@ -273,10 +273,20 @@ def compute_value_factor(data, year, weights, date_start=None, date_end=None):
     if not detail:
         return None
 
-    df      = pd.DataFrame(detail).T
+    df = pd.DataFrame(detail).T
+    # Force float — DataFrame.T depuis un dict mixte donne dtype=object
+    for col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
     metrics = ["B/P  (CP/n÷cours)", "E/P  (RN/n÷cours)",
                "FCF/P (FCF/n÷cours)", "CA/P  (CA/n÷cours)",
                "EBIT/P (Rex/n÷cours)"]
+
+    # Garder uniquement les titres qui ont AU MOINS une métrique valide
+    has_any = df[metrics].notna().any(axis=1)
+    df = df[has_any]
+    if df.empty:
+        return None
 
     # ── 3. Normalisation : m_ij / max_{E_t}(m_ij) ─────────────────
     norm_df = pd.DataFrame({m: _normalise_standard(df[m]) for m in metrics})
@@ -290,7 +300,9 @@ def compute_value_factor(data, year, weights, date_start=None, date_end=None):
         "Cours moyen":           df["Cours moyen"],
         "Période":               period_label,
     })
-    return res.dropna(subset=["Score Value"]).sort_values("Score Value", ascending=False)
+    # Exclure les titres avec score strictement nul (aucune métrique disponible)
+    res = res[res["Score Value"] > 0].sort_values("Score Value", ascending=False)
+    return res if not res.empty else None
 
 
 def compute_momentum_factor(data, end_date, weights):
@@ -591,6 +603,8 @@ def run_optimization_pipeline(mf_scores, data, factor_results,
 
 
 # ─── MULTIFACTOR & PORTFOLIO ──────────────────────────────────
+
+def compute_multifactor(factor_results, betas):
     all_t = set()
     for df in factor_results.values():
         if df is not None:
