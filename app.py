@@ -165,9 +165,12 @@ def compute_value_factor(data, year, weights, date_start=None, date_end=None):
       2. E/P  = (Résultat net / Nb titres) / Cours moyen          [Earnings-to-Price]
                  → inverse de P/E : score élevé = titre bon marché ✓
 
-      3. FCF/P = (Flux nets trésorerie / Nb titres) / Cours moyen [FCF yield]
+      3. FCF/P  = (Flux nets trésorerie / Nb titres) / Cours moyen [FCF yield]
 
-      4. CA/P  = (Chiffre d'affaires / Nb titres) / Cours moyen   [Sales yield]
+      4. CA/P   = (Chiffre d'affaires / Nb titres) / Cours moyen   [Sales yield]
+
+      5. EBIT/P = (Résultat d'exploitation / Nb titres) / Cours moyen
+                  → proxy de EV/EBIT inversé, rapporté au cours unitaire
 
     Le cours moyen est calculé sur la plage [date_start, date_end] à partir
     des cours journaliers (feuille Cours), ou sur l'année calendaire si non fournie.
@@ -205,20 +208,23 @@ def compute_value_factor(data, year, weights, date_start=None, date_end=None):
         rn  = data["resultat_net"].get(t, {}).get(year, np.nan)
         fcf = data["flux_treso"].get(t, {}).get(year, np.nan)
         ca  = data["chiffre_affaires"].get(t, {}).get(year, np.nan)
+        rex = data["resultat_expl"].get(t, {}).get(year, np.nan)
 
         # Ratios par action / cours moyen
-        bp_val  = (cp  / n) / cm if pd.notna(cp)  else np.nan   # B/P  = (CP/n) / cours
-        ep_val  = (rn  / n) / cm if pd.notna(rn)  else np.nan   # E/P  = (RN/n) / cours
-        fcfp    = (fcf / n) / cm if pd.notna(fcf) else np.nan   # FCF/P
-        cap_val = (ca  / n) / cm if pd.notna(ca)  else np.nan   # CA/P
+        bp_val   = (cp  / n) / cm if pd.notna(cp)  else np.nan   # B/P  = (CP/n) / cours
+        ep_val   = (rn  / n) / cm if pd.notna(rn)  else np.nan   # E/P  = (RN/n) / cours
+        fcfp     = (fcf / n) / cm if pd.notna(fcf) else np.nan   # FCF/P
+        cap_val  = (ca  / n) / cm if pd.notna(ca)  else np.nan   # CA/P
+        ebitp    = (rex / n) / cm if pd.notna(rex) else np.nan   # EBIT/P
 
         detail[t] = {
-            "B/P  (CP/n÷cours)":   bp_val,
-            "E/P  (RN/n÷cours)":   ep_val,
-            "FCF/P (FCF/n÷cours)": fcfp,
-            "CA/P  (CA/n÷cours)":  cap_val,
-            "Cours moyen":         cm,
-            "Nb titres":           n,
+            "B/P  (CP/n÷cours)":    bp_val,
+            "E/P  (RN/n÷cours)":    ep_val,
+            "FCF/P (FCF/n÷cours)":  fcfp,
+            "CA/P  (CA/n÷cours)":   cap_val,
+            "EBIT/P (Rex/n÷cours)": ebitp,
+            "Cours moyen":          cm,
+            "Nb titres":            n,
         }
 
     if not detail:
@@ -226,7 +232,8 @@ def compute_value_factor(data, year, weights, date_start=None, date_end=None):
 
     df      = pd.DataFrame(detail).T
     metrics = ["B/P  (CP/n÷cours)", "E/P  (RN/n÷cours)",
-               "FCF/P (FCF/n÷cours)", "CA/P  (CA/n÷cours)"]
+               "FCF/P (FCF/n÷cours)", "CA/P  (CA/n÷cours)",
+               "EBIT/P (Rex/n÷cours)"]
 
     # ── 3. Normalisation : m_ij / max_{E_t}(m_ij) ─────────────────
     norm_df = pd.DataFrame({m: _normalise_standard(df[m]) for m in metrics})
@@ -528,13 +535,14 @@ with t1:
 
     # ── Pondérations ───────────────────────────────────────────
     st.markdown("**⚖️ Pondérations des métriques**")
-    mc1, mc2, mc3, mc4 = st.columns(4)
-    w_bp  = mc1.number_input("B/P  (CP/n÷cours)",   0.0, 1.0, 0.25, 0.05, key="wbp")
-    w_eps = mc2.number_input("E/P  (RN/n÷cours)",   0.0, 1.0, 0.25, 0.05, key="wep")
-    w_fcf = mc3.number_input("FCF/P (FCF/n÷cours)", 0.0, 1.0, 0.25, 0.05, key="wfcf")
-    w_ca  = mc4.number_input("CA/P  (CA/n÷cours)",  0.0, 1.0, 0.25, 0.05, key="wca")
+    mc1, mc2, mc3, mc4, mc5 = st.columns(5)
+    w_bp   = mc1.number_input("B/P  (CP/n÷cours)",    0.0, 1.0, 0.20, 0.05, key="wbp")
+    w_eps  = mc2.number_input("E/P  (RN/n÷cours)",    0.0, 1.0, 0.20, 0.05, key="wep")
+    w_fcf  = mc3.number_input("FCF/P (FCF/n÷cours)",  0.0, 1.0, 0.20, 0.05, key="wfcf")
+    w_ca   = mc4.number_input("CA/P  (CA/n÷cours)",   0.0, 1.0, 0.20, 0.05, key="wca")
+    w_ebit = mc5.number_input("EBIT/P (Rex/n÷cours)", 0.0, 1.0, 0.20, 0.05, key="webit")
 
-    ws = round(w_bp + w_eps + w_fcf + w_ca, 4)
+    ws = round(w_bp + w_eps + w_fcf + w_ca + w_ebit, 4)
     if abs(ws - 1.0) > 0.01:
         st.warning(f"⚠️ Somme des poids = {ws:.2f} ≠ 1.0")
     else:
@@ -542,8 +550,9 @@ with t1:
 
     if st.button("⚙️ Calculer le Facteur Value", type="primary"):
         metrics_v = ["B/P  (CP/n÷cours)", "E/P  (RN/n÷cours)",
-                     "FCF/P (FCF/n÷cours)", "CA/P  (CA/n÷cours)"]
-        weights_v = dict(zip(metrics_v, [w_bp, w_eps, w_fcf, w_ca]))
+                     "FCF/P (FCF/n÷cours)", "CA/P  (CA/n÷cours)",
+                     "EBIT/P (Rex/n÷cours)"]
+        weights_v = dict(zip(metrics_v, [w_bp, w_eps, w_fcf, w_ca, w_ebit]))
         res = compute_value_factor(data, selected_year, weights_v,
                                    date_start=v_date_start, date_end=v_date_end)
         if res is not None:
@@ -563,7 +572,8 @@ with t1:
         st.plotly_chart(score_bar(res["Score Value"], "#06b6d4"), width="stretch")
 
         metrics_v = ["B/P  (CP/n÷cours)", "E/P  (RN/n÷cours)",
-                     "FCF/P (FCF/n÷cours)", "CA/P  (CA/n÷cours)"]
+                     "FCF/P (FCF/n÷cours)", "CA/P  (CA/n÷cours)",
+                     "EBIT/P (Rex/n÷cours)"]
         all_possible = ["Score Value"] + metrics_v + ["Cours moyen", "Période"]
         show_cols = [c for c in all_possible if c in res.columns]
         disp = res[show_cols].reset_index().rename(columns={"index": "Ticker"})
