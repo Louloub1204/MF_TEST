@@ -564,7 +564,8 @@ with t1:
 
         metrics_v = ["B/P  (CP/n÷cours)", "E/P  (RN/n÷cours)",
                      "FCF/P (FCF/n÷cours)", "CA/P  (CA/n÷cours)"]
-        show_cols = ["Score Value"] + [m for m in metrics_v if m in res.columns] + ["Cours moyen"]
+        all_possible = ["Score Value"] + metrics_v + ["Cours moyen", "Période"]
+        show_cols = [c for c in all_possible if c in res.columns]
         disp = res[show_cols].reset_index().rename(columns={"index": "Ticker"})
         disp.insert(0, "Rang", range(1, len(disp) + 1))
         fmt = {"Score Value": "{:.4f}", "Cours moyen": "{:,.1f}"}
