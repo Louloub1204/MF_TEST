@@ -712,10 +712,14 @@ with t1:
     with vd1:
         cours_min = data["cours"].index.min().date()
         cours_max = data["cours"].index.max().date()
-        v_date_start = st.date_input("Date début", value=pd.Timestamp(f"{selected_year}-01-01").date(),
+        v_start_default = max(cours_min, min(cours_max,
+                          pd.Timestamp(f"{selected_year}-01-01").date()))
+        v_date_start = st.date_input("Date début", value=v_start_default,
                                       min_value=cours_min, max_value=cours_max, key="v_d1")
     with vd2:
-        v_date_end   = st.date_input("Date fin",   value=pd.Timestamp(f"{selected_year}-12-31").date(),
+        v_end_default = max(cours_min, min(cours_max,
+                        pd.Timestamp(f"{selected_year}-12-31").date()))
+        v_date_end   = st.date_input("Date fin", value=v_end_default,
                                       min_value=cours_min, max_value=cours_max, key="v_d2")
     with vd3:
         st.markdown(f"<br><span style='font-size:11px;color:#64748b;'>"
@@ -846,15 +850,21 @@ with t4:
     with dd1:
         div_yr = st.selectbox("Année du dividende", div_years, key="div_yr")
     with dd2:
+        d_cours_min = data["cours"].index.min().date()
+        d_cours_max = data["cours"].index.max().date()
+        d_start_default = max(d_cours_min, min(d_cours_max,
+                          pd.Timestamp(f"{div_years[0]}-01-01").date()))
         d_date_start = st.date_input("Cours moyen — Date début",
-                                      value=pd.Timestamp(f"{div_years[0]}-01-01").date(),
-                                      min_value=data["cours"].index.min().date(),
-                                      max_value=data["cours"].index.max().date(), key="dd1")
+                                      value=d_start_default,
+                                      min_value=d_cours_min,
+                                      max_value=d_cours_max, key="dd1")
     with dd3:
-        d_date_end   = st.date_input("Cours moyen — Date fin",
-                                      value=pd.Timestamp(f"{div_years[0]}-12-31").date(),
-                                      min_value=data["cours"].index.min().date(),
-                                      max_value=data["cours"].index.max().date(), key="dd2")
+        d_end_default = max(d_cours_min, min(d_cours_max,
+                        pd.Timestamp(f"{div_years[0]}-12-31").date()))
+        d_date_end = st.date_input("Cours moyen — Date fin",
+                                    value=d_end_default,
+                                    min_value=d_cours_min,
+                                    max_value=d_cours_max, key="dd2")
 
     if st.button("⚙️ Calculer le Dividende", type="primary"):
         res = compute_dividend_factor(data, div_yr,
@@ -1036,14 +1046,9 @@ with t6:
                                "classement_MF.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-# ══ PORTEFEUILLE ═══════════════════════════════════════════════
+# ══ PORTEFEUILLE ═══════════════════════════════════════════
 with t7:
     st.markdown("<span class='pill'>Étape 3</span><p class='sh'>Construction du Portefeuille Cible</p>", unsafe_allow_html=True)
-    st.markdown("""<div class='fbox'>
-    Pipeline d'optimisation séquentiel :<br>
-    Univers complet → ① Liquidité → ② Score MF → ③ Corrélation → ④ Poids optimaux<br>
-    Pondération finale : α(T,t) = (n−r+1)/(n(n+1)/2) &nbsp;ou&nbsp; Markowitz MF-augmenté
-    </div>""", unsafe_allow_html=True)
 
     if st.session_state.mf_scores is None:
         st.info("👈 Calculez d'abord l'Indice MF (onglet 🔢).")
@@ -1051,216 +1056,234 @@ with t7:
         mf = st.session_state.mf_scores
         all_tickers = mf.index.tolist()
 
-        # ── Sélection manuelle (override) ─────────────────────────
-        with st.expander("🔧 Sélection manuelle des titres (optionnel — écrase les filtres)", expanded=False):
-            manual_mode = st.checkbox("Activer la sélection manuelle", value=False)
-            if manual_mode:
-                manual_included = st.multiselect(
-                    "✅ Titres à inclure",
-                    options=all_tickers,
-                    default=all_tickers,
+        # ── Choix du mode ─────────────────────────────────────────
+        st.markdown("**🎯 Mode de construction du portefeuille**")
+        mode = st.radio(
+            label="Mode",
+            options=[
+                "🤖 Optimisation automatique (pipeline de filtres)",
+                "🖐️ Sélection manuelle des titres",
+            ],
+            label_visibility="collapsed",
+            horizontal=True,
+        )
+        st.markdown("---")
+
+        # ══════════════════════════════════════════════════════════
+        # MODE A — PIPELINE AUTOMATIQUE
+        # ══════════════════════════════════════════════════════════
+        if mode == "🤖 Optimisation automatique (pipeline de filtres)":
+            st.markdown("""<div class='fbox'>
+            Pipeline séquentiel — chaque filtre réduit l'univers :<br>
+            Univers complet → ① Liquidité → ② Score MF → ③ Corrélation → ④ Poids finaux
+            </div>""", unsafe_allow_html=True)
+
+            col_f1, col_f2, col_f3 = st.columns(3)
+            with col_f1:
+                st.markdown("**① Filtre Liquidité**")
+                liq_ok = "Liquidité" in fr
+                min_vol_pct = st.slider("Volume moyen ≥ X% du max", 0, 50, 10, 1,
+                    help="0% = pas de filtre", disabled=not liq_ok)
+                if not liq_ok:
+                    st.caption("⚠️ Calculez le facteur Liquidité pour activer")
+            with col_f2:
+                st.markdown("**② Filtre Score MF**")
+                top_pct = st.slider("Garder le top X% des scores MF", 10, 100, 60, 5,
+                    help="60% = garde les 60% de titres avec les meilleurs scores")
+            with col_f3:
+                st.markdown("**③ Filtre Corrélation**")
+                max_corr = st.slider("Corrélation max entre titres", 0.3, 1.0, 0.75, 0.05,
+                    help="Deux titres corrélés au-delà de ce seuil → on garde le meilleur")
+                window_corr = st.number_input("Fenêtre (jours)", 60, 504, 252, 21, key="win_corr_a")
+
+            st.markdown("---")
+            st.markdown("**④ Pondération finale**")
+            use_mkz = st.toggle("Optimisation Markowitz MF-augmentée", value=False,
+                help="OFF = poids par rang MF (note technique) · ON = Mean-Variance avec score MF")
+            if use_mkz:
+                mk1,mk2,mk3,mk4 = st.columns(4)
+                mf_weight     = mk1.slider("Poids Score MF",    0.0,1.0,0.50,0.05)
+                risk_aversion = mk2.slider("Aversion risque λ", 0.1,10.0,2.0,0.1)
+                min_w         = mk3.slider("Poids min/titre (%)",0,20,0,1)/100
+                max_w         = mk4.slider("Poids max/titre (%)",5,100,40,5)/100
+            else:
+                mf_weight,risk_aversion,min_w,max_w = 0.5,2.0,0.0,1.0
+
+            if st.button("🚀 Lancer le pipeline", type="primary"):
+                with st.spinner("Optimisation en cours..."):
+                    inc,pw,pipeline_log = run_optimization_pipeline(
+                        mf_scores=mf, data=data, factor_results=fr,
+                        min_vol_pct=min_vol_pct if liq_ok else 0,
+                        top_pct=top_pct, max_corr=max_corr,
+                        use_markowitz=use_mkz, risk_aversion=risk_aversion,
+                        mf_weight=mf_weight, min_w=min_w, max_w=max_w,
+                        window=int(window_corr),
+                    )
+                if pw is None or len(pw)==0:
+                    st.error("❌ Aucun titre retenu — élargissez les seuils des filtres.")
+                else:
+                    st.session_state.pw         = pw
+                    st.session_state.pw_log     = pipeline_log
+                    st.session_state.pw_use_mkz = use_mkz
+                    st.session_state.pw_mode    = "auto"
+                    st.success(f"✅ {len(pw)} titres retenus · Σα = {pw.sum():.6f}")
+
+        # ══════════════════════════════════════════════════════════
+        # MODE B — SÉLECTION MANUELLE
+        # ══════════════════════════════════════════════════════════
+        else:
+            st.markdown("""<div class='fbox'>
+            Vous choisissez librement les titres à inclure, en vous appuyant sur le classement MF.<br>
+            Les pondérations α sont ensuite calculées sur cet univers restreint.
+            </div>""", unsafe_allow_html=True)
+
+            with st.expander("📊 Classement MF — aide à la sélection", expanded=True):
+                mf_disp = mf.reset_index()
+                mf_disp.columns = ["Ticker","Score MF"]
+                mf_disp.insert(0,"Rang",range(1,len(mf_disp)+1))
+                mf_disp["Score MF"] = mf_disp["Score MF"].round(6)
+                st.dataframe(
+                    mf_disp.style.format({"Score MF":"{:.6f}"})
+                           .bar(subset=["Score MF"],color=["#1e3a5f","#3b82f6"]),
+                    width="stretch", hide_index=True, height=300
                 )
 
-        st.markdown("---")
-
-        # ── Paramètres des filtres ─────────────────────────────────
-        st.markdown("**⚙️ Paramètres du pipeline d'optimisation**")
-
-        col_f1, col_f2, col_f3 = st.columns(3)
-
-        with col_f1:
-            st.markdown("**① Filtre Liquidité**")
-            min_vol_pct = st.slider(
-                "Volume moyen ≥ X% du max",
-                0, 50, 10, 1,
-                help="0% = pas de filtre · 20% = garde les titres avec au moins 20% du volume du titre le plus liquide"
+            included = st.multiselect(
+                "✅ Titres à inclure dans le portefeuille",
+                options=all_tickers, default=all_tickers,
+                help="Consultez le classement MF ci-dessus pour guider votre sélection"
             )
-            liq_ok = "Liquidité" in fr
-            if not liq_ok:
-                st.caption("⚠️ Calculez le facteur Liquidité pour activer ce filtre")
-
-        with col_f2:
-            st.markdown("**② Filtre Score MF**")
-            top_pct = st.slider(
-                "Garder le top X% des scores MF",
-                10, 100, 60, 5,
-                help="60% = garde les 60% de titres avec les meilleurs scores MF"
-            )
-
-        with col_f3:
-            st.markdown("**③ Filtre Corrélation**")
-            max_corr = st.slider(
-                "Corrélation max entre titres",
-                0.3, 1.0, 0.75, 0.05,
-                help="0.75 = deux titres corrélés à plus de 75% → on garde le meilleur"
-            )
-            window_corr = st.number_input("Fenêtre (jours)", 60, 504, 252, 21,
-                                          key="win_corr")
-
-        st.markdown("---")
-        st.markdown("**④ Pondération finale**")
-        use_mkz = st.toggle("Optimisation Markowitz MF-augmentée", value=False,
-                             help="OFF = poids par rang MF (formule de la note technique)\nON = optimisation Mean-Variance avec score MF intégré dans l'utilité")
-
-        if use_mkz:
-            mk1, mk2, mk3, mk4 = st.columns(4)
-            mf_weight     = mk1.slider("Poids Score MF dans l'utilité",  0.0, 1.0, 0.50, 0.05,
-                                        help="0 = pure minimisation variance · 1 = pure maximisation score MF")
-            risk_aversion = mk2.slider("Aversion au risque λ",           0.1, 10.0, 2.0, 0.1)
-            min_w         = mk3.slider("Poids min par titre (%)",         0, 20, 0, 1) / 100
-            max_w         = mk4.slider("Poids max par titre (%)",         5, 100, 40, 5) / 100
-        else:
-            mf_weight, risk_aversion, min_w, max_w = 0.5, 2.0, 0.0, 1.0
-
-        st.markdown("---")
-
-        if st.button("🚀 Lancer l'optimisation", type="primary"):
-            with st.spinner("Optimisation en cours..."):
-                if manual_mode:
-                    # Mode manuel : bypass des filtres
-                    inc = manual_included if manual_included else all_tickers
-                    if use_mkz:
-                        pw = optimize_markowitz(
-                            mf, inc, data["cours"],
-                            window=int(window_corr),
-                            risk_aversion=risk_aversion,
-                            mf_weight=mf_weight,
-                            min_w=min_w, max_w=max_w
-                        )
-                        if pw is None:
-                            pw = compute_portfolio_weights(mf, included=inc)
-                    else:
-                        pw = compute_portfolio_weights(mf, included=inc)
-                    pipeline_log = [("Sélection manuelle", len(inc), inc),
-                                    ("Poids optimaux", len(pw), pw.index.tolist())]
-                else:
-                    inc, pw, pipeline_log = run_optimization_pipeline(
-                        mf_scores     = mf,
-                        data          = data,
-                        factor_results= fr,
-                        min_vol_pct   = min_vol_pct if liq_ok else 0,
-                        top_pct       = top_pct,
-                        max_corr      = max_corr,
-                        use_markowitz = use_mkz,
-                        risk_aversion = risk_aversion,
-                        mf_weight     = mf_weight,
-                        min_w         = min_w,
-                        max_w         = max_w,
-                        window        = int(window_corr),
-                    )
-
-            if pw is None or len(pw) == 0:
-                st.error("❌ Le pipeline n'a retenu aucun titre. Élargissez les seuils des filtres.")
+            n_inc = len(included)
+            if n_inc == 0:
+                st.warning("⚠️ Sélectionnez au moins un titre.")
+            elif n_inc < len(all_tickers):
+                st.info(f"ℹ️ {n_inc} titres sélectionnés sur {len(all_tickers)}")
             else:
-                st.session_state.pw        = pw
-                st.session_state.pw_log    = pipeline_log
-                st.session_state.pw_use_mkz= use_mkz
-                st.success(f"✅ Portefeuille optimal : {len(pw)} titres · Σα = {pw.sum():.6f}")
+                st.success(f"✅ Univers complet ({n_inc} titres)")
 
-        # ── Résultats ──────────────────────────────────────────────
+            st.markdown("---")
+            st.markdown("**④ Pondération finale**")
+            use_mkz_m = st.toggle("Optimisation Markowitz MF-augmentée", value=False,
+                key="mkz_manual",
+                help="OFF = poids par rang MF · ON = Mean-Variance avec score MF")
+            if use_mkz_m:
+                mm1,mm2,mm3,mm4 = st.columns(4)
+                mf_weight_m     = mm1.slider("Poids Score MF",    0.0,1.0,0.50,0.05,key="mfw_m")
+                risk_aversion_m = mm2.slider("Aversion risque λ", 0.1,10.0,2.0,0.1,key="rav_m")
+                min_w_m         = mm3.slider("Poids min/titre (%)",0,20,0,1,key="mnw_m")/100
+                max_w_m         = mm4.slider("Poids max/titre (%)",5,100,40,5,key="mxw_m")/100
+            else:
+                mf_weight_m,risk_aversion_m,min_w_m,max_w_m = 0.5,2.0,0.0,1.0
+
+            if st.button("📂 Construire le portefeuille", type="primary") and n_inc > 0:
+                with st.spinner("Calcul des poids..."):
+                    if use_mkz_m:
+                        pw = optimize_markowitz(mf, included, data["cours"],
+                            window=252, risk_aversion=risk_aversion_m,
+                            mf_weight=mf_weight_m, min_w=min_w_m, max_w=max_w_m)
+                        if pw is None:
+                            pw = compute_portfolio_weights(mf, included=included)
+                            st.warning("⚠️ Markowitz indisponible — poids rang MF appliqués")
+                    else:
+                        pw = compute_portfolio_weights(mf, included=included)
+                st.session_state.pw         = pw
+                st.session_state.pw_log     = [("Sélection manuelle",n_inc,included),
+                                               ("Poids finaux",len(pw),pw.index.tolist())]
+                st.session_state.pw_use_mkz = use_mkz_m
+                st.session_state.pw_mode    = "manuel"
+                st.success(f"✅ {len(pw)} titres · Σα = {pw.sum():.6f}")
+
+        # ══════════════════════════════════════════════════════════
+        # RÉSULTATS COMMUNS AUX DEUX MODES
+        # ══════════════════════════════════════════════════════════
         if st.session_state.pw is not None:
-            pw  = st.session_state.pw
-            log = st.session_state.get("pw_log", [])
+            pw        = st.session_state.pw
+            log       = st.session_state.get("pw_log",[])
+            mode_used = st.session_state.get("pw_mode","")
 
-            # Pipeline log
-            if log:
+            st.markdown("---")
+
+            # Trace pipeline (mode auto uniquement)
+            if log and mode_used == "auto":
                 st.markdown("**🔍 Trace du pipeline**")
-                log_cols = st.columns(len(log))
-                colors_log = ["#475569","#3b82f6","#8b5cf6","#06b6d4","#10b981"]
-                for i, (step, n_step, _) in enumerate(log):
+                log_cols  = st.columns(len(log))
+                clr_steps = ["#475569","#3b82f6","#8b5cf6","#06b6d4","#10b981"]
+                for i,(step,n_step,_) in enumerate(log):
                     with log_cols[i]:
                         st.markdown(
                             f"<div style='background:#161d2e;border:1px solid #1e2d45;"
                             f"border-radius:8px;padding:10px;text-align:center;'>"
-                            f"<div style='font-size:10px;color:{colors_log[i % len(colors_log)]};font-weight:600;"
+                            f"<div style='font-size:10px;color:{clr_steps[i%len(clr_steps)]};font-weight:600;"
                             f"letter-spacing:.08em;text-transform:uppercase;'>{step}</div>"
                             f"<div style='font-size:24px;font-weight:800;color:#e2e8f0;'>{n_step}</div>"
                             f"<div style='font-size:10px;color:#64748b;'>titres</div></div>",
-                            unsafe_allow_html=True
-                        )
-
-            st.markdown("---")
+                            unsafe_allow_html=True)
+                st.markdown("")
 
             # KPIs
-            k1, k2, k3, k4, k5 = st.columns(5)
+            k1,k2,k3,k4,k5 = st.columns(5)
             k1.metric("Nb titres",         len(pw))
             k2.metric("Poids max",         f"{pw.max()*100:.2f}%")
             k3.metric("Poids min",         f"{pw.min()*100:.2f}%")
             k4.metric("HHI concentration", f"{(pw**2).sum():.4f}")
-            k5.metric("Méthode",
-                      "Markowitz" if st.session_state.get("pw_use_mkz") else "Rang MF")
+            k5.metric("Mode", "🤖 Auto" if mode_used=="auto" else "🖐️ Manuel")
 
-            pl, pr = st.columns(2)
+            pl,pr = st.columns(2)
             with pl:
                 st.markdown("**Répartition du portefeuille**")
                 dpw = pw.copy()
-                if len(dpw) > 15:
-                    dpw = pd.concat([dpw.head(15),
-                                     pd.Series({"Autres": dpw.iloc[15:].sum()})])
+                if len(dpw)>15:
+                    dpw = pd.concat([dpw.head(15),pd.Series({"Autres":dpw.iloc[15:].sum()})])
                 fig_p = go.Figure(go.Pie(
-                    labels=dpw.index, values=dpw.values, hole=0.45,
+                    labels=dpw.index,values=dpw.values,hole=0.45,
                     textfont=dict(size=10),
-                    marker=dict(line=dict(color="#0b0f1a", width=2)),
-                    hovertemplate="<b>%{label}</b><br>%{percent:.2%}<extra></extra>"
-                ))
+                    marker=dict(line=dict(color="#0b0f1a",width=2)),
+                    hovertemplate="<b>%{label}</b><br>%{percent:.2%}<extra></extra>"))
                 fig_p.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)", height=380,
-                    font=dict(color="#94a3b8", family="JetBrains Mono"),
-                    legend=dict(font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
-                    margin=dict(l=10, r=10, t=20, b=10),
+                    paper_bgcolor="rgba(0,0,0,0)",height=380,
+                    font=dict(color="#94a3b8",family="JetBrains Mono"),
+                    legend=dict(font=dict(size=10),bgcolor="rgba(0,0,0,0)"),
+                    margin=dict(l=10,r=10,t=20,b=10),
                     annotations=[dict(text=f"<b>{len(pw)}</b><br>titres",
-                                      x=0.5, y=0.5, font_size=14, showarrow=False,
-                                      font=dict(color="#94a3b8"))]
-                )
-                st.plotly_chart(fig_p, width="stretch")
+                        x=0.5,y=0.5,font_size=14,showarrow=False,
+                        font=dict(color="#94a3b8"))])
+                st.plotly_chart(fig_p,width="stretch")
 
             with pr:
                 st.markdown("**Poids par titre**")
                 pt = pw.head(25)
                 fig_h = go.Figure(go.Bar(
-                    x=pt.values * 100, y=pt.index, orientation="h",
-                    marker=dict(color=np.linspace(0.9, 0.2, len(pt)),
-                                colorscale="Blues"),
+                    x=pt.values*100,y=pt.index,orientation="h",
+                    marker=dict(color=np.linspace(0.9,0.2,len(pt)),colorscale="Blues"),
                     text=[f"{v*100:.2f}%" for v in pt.values],
-                    textposition="outside",
-                    textfont=dict(size=9, color="#94a3b8")
-                ))
+                    textposition="outside",textfont=dict(size=9,color="#94a3b8")))
                 fig_h.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    height=480, font=dict(color="#94a3b8", family="JetBrains Mono"),
-                    margin=dict(l=10, r=80, t=20, b=30),
-                    xaxis=dict(gridcolor="#1e2d45", ticksuffix="%"),
-                    yaxis=dict(autorange="reversed")
-                )
-                st.plotly_chart(fig_h, width="stretch")
+                    paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
+                    height=480,font=dict(color="#94a3b8",family="JetBrains Mono"),
+                    margin=dict(l=10,r=80,t=20,b=30),
+                    xaxis=dict(gridcolor="#1e2d45",ticksuffix="%"),
+                    yaxis=dict(autorange="reversed"))
+                st.plotly_chart(fig_h,width="stretch")
 
-            # Table d'allocation
-            ranks_final = mf.reindex(pw.index).rank(ascending=False, method='min')
+            # Table
+            ranks_final = mf.reindex(pw.index).rank(ascending=False,method="min")
             alloc = pd.DataFrame({
                 "Ticker":       pw.index,
                 "Rang MF":      ranks_final.loc[pw.index].astype(int),
                 "Score MF":     mf.loc[pw.index].round(6),
                 "Poids α(T,t)": pw.values,
-                "Poids (%)":    (pw.values * 100).round(4),
+                "Poids (%)":    (pw.values*100).round(4),
             }).reset_index(drop=True)
-
             st.markdown("**Table d'allocation complète**")
             st.dataframe(
-                alloc.style.format({
-                    "Score MF":     "{:.6f}",
-                    "Poids α(T,t)": "{:.6f}",
-                    "Poids (%)":    "{:.4f}%"
-                }).bar(subset=["Poids (%)"], color=["#1e3a5f", "#3b82f6"]),
-                width="stretch", hide_index=True
-            )
+                alloc.style.format({"Score MF":"{:.6f}","Poids α(T,t)":"{:.6f}","Poids (%)":"{:.4f}%"})
+                     .bar(subset=["Poids (%)"],color=["#1e3a5f","#3b82f6"]),
+                width="stretch",hide_index=True)
 
-            buf = io.BytesIO()
-            alloc.to_excel(buf, index=False)
-            st.download_button(
-                "⬇️ Exporter le portefeuille (Excel)", buf.getvalue(),
-                "portefeuille_optimal_BRVM.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            buf = io.BytesIO(); alloc.to_excel(buf,index=False)
+            st.download_button("⬇️ Exporter le portefeuille (Excel)", buf.getvalue(),
+                "portefeuille_BRVM.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # ══ DONNÉES ════════════════════════════════════════════════════
 with t8:
