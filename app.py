@@ -7,6 +7,14 @@ import warnings
 from scipy.optimize import minimize
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import squareform
+try:
+    from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.model_selection import cross_val_score
+    from sklearn.inspection import permutation_importance
+    ML_AVAILABLE = True
+except ImportError:
+    ML_AVAILABLE = False
 warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="CGF Gestion · SMF BRVM", page_icon="📊",
@@ -656,6 +664,222 @@ def compute_portfolio_weights(mf, included=None):
     ranks = mf.rank(ascending=False, method='min')
     w = (n - ranks + 1) / (n * (n+1) / 2)
     return w.sort_values(ascending=False)
+
+
+# ─── ML BETA OPTIMISATION ─────────────────────────────────────
+
+def compute_scores_on_window(data, train_start, train_end, year):
+    """
+    Recalcule les 5 scores factoriels sur la plage [train_start, train_end]
+    spécifiquement pour le ML — indépendant des onglets facteurs.
+
+    Retourne un DataFrame (tickers × facteurs) avec les scores normalisés.
+    """
+    FACTOR_NAMES = ["Value", "Momentum", "Volatilité", "Dividende", "Liquidité"]
+    scores = {}
+
+    cours  = data["cours"].apply(pd.to_numeric, errors="coerce")
+    ts, te = pd.to_datetime(train_start), pd.to_datetime(train_end)
+    mask   = (cours.index >= ts) & (cours.index <= te)
+    sub    = cours.loc[mask]
+    if sub.empty:
+        return None
+
+    tickers = [t for t in data["tickers"] if t in sub.columns]
+
+    # ── VALUE ─────────────────────────────────────────────────
+    nb  = data["nb_titres"]
+    cms = sub.mean(numeric_only=True)
+    val_scores = {}
+    for t in tickers:
+        if t not in nb or nb[t] <= 0:
+            continue
+        cm = cms.get(t, np.nan)
+        if pd.isna(cm) or cm <= 0:
+            continue
+        n   = nb[t]
+        cp  = data["capitaux_propres"].get(t, {}).get(year, np.nan)
+        rn  = data["resultat_net"].get(t, {}).get(year, np.nan)
+        fcf = data["flux_treso"].get(t, {}).get(year, np.nan)
+        ca  = data["chiffre_affaires"].get(t, {}).get(year, np.nan)
+        rex = data["resultat_expl"].get(t, {}).get(year, np.nan)
+        metrics = {
+            "bp":  (cp/n)/cm  if pd.notna(cp)  else np.nan,
+            "ep":  (rn/n)/cm  if pd.notna(rn)  else np.nan,
+            "fp":  (fcf/n)/cm if pd.notna(fcf) else np.nan,
+            "cp":  (ca/n)/cm  if pd.notna(ca)  else np.nan,
+            "ebp": (rex/n)/cm if pd.notna(rex) else np.nan,
+        }
+        val_scores[t] = metrics
+    if val_scores:
+        vdf = pd.DataFrame(val_scores).T
+        vdf = vdf.apply(pd.to_numeric, errors="coerce")
+        norm_v = {}
+        for m in vdf.columns:
+            mx = vdf[m].max()
+            norm_v[m] = vdf[m]/mx if (pd.notna(mx) and mx != 0) else vdf[m]*0
+        norm_vdf = pd.DataFrame(norm_v)
+        scores["Value"] = norm_vdf.mean(axis=1).fillna(0)
+
+    # ── MOMENTUM (rendement moyen sur la fenêtre) ──────────────
+    ret = sub.pct_change().dropna(how="all")
+    if not ret.empty:
+        mom = ret.mean(numeric_only=True).replace([np.inf,-np.inf], np.nan).dropna()
+        mx  = mom.max()
+        if pd.notna(mx) and mx != 0:
+            scores["Momentum"] = (mom/mx).clip(0)
+        else:
+            scores["Momentum"] = mom*0
+
+    # ── VOLATILITÉ (inversée) ───────────────────────────────────
+    vol = ret.std(numeric_only=True).dropna()
+    if not vol.empty:
+        mn = vol.min()
+        if pd.notna(mn) and mn > 0:
+            scores["Volatilité"] = (mn/vol).replace([np.inf,-np.inf], np.nan).fillna(0)
+
+    # ── DIVIDENDE ──────────────────────────────────────────────
+    div = data["dividendes"]
+    dr  = div[div["Date"] == year]
+    if not dr.empty:
+        yields = {}
+        for t in tickers:
+            if t not in dr.columns:
+                continue
+            d = dr[t].values[0]
+            p = cms.get(t, np.nan)
+            if pd.notna(d) and pd.notna(p) and p > 0:
+                yields[t] = float(d)/float(p)
+        if yields:
+            s  = pd.Series(yields)
+            mx = s.max()
+            scores["Dividende"] = (s/mx if mx > 0 else s).clip(0)
+
+    # ── LIQUIDITÉ ──────────────────────────────────────────────
+    vol_df = data["volumes"].apply(pd.to_numeric, errors="coerce")
+    vmask  = (vol_df.index >= ts) & (vol_df.index <= te)
+    vsub   = vol_df.loc[vmask]
+    if not vsub.empty:
+        avg = vsub.mean(numeric_only=True).replace([np.inf,-np.inf], np.nan).dropna()
+        mx  = avg.max()
+        if pd.notna(mx) and mx > 0:
+            scores["Liquidité"] = (avg/mx).clip(0)
+
+    if not scores:
+        return None
+
+    score_df = pd.DataFrame(scores).reindex(columns=FACTOR_NAMES).fillna(0)
+    return score_df
+
+
+def build_ml_dataset(data, train_start, train_end, target_start, target_end, year):
+    """
+    Construit le dataset ML avec recalcul complet des scores sur la fenêtre ML :
+
+      Features X  : F_i(T) recalculés sur [train_start → train_end]
+                    → indépendant des plages définies dans les onglets facteurs
+      Cible Y     : rendement total du titre T sur [target_start → target_end]
+
+    Retourne (X_df, y_series, tickers) ou (None, None, None).
+    """
+    # ── Features : recalcul des scores sur la fenêtre d'entraînement ──
+    X_df = compute_scores_on_window(data, train_start, train_end, year)
+    if X_df is None or X_df.empty:
+        return None, None, None
+
+    # ── Cible : rendement total sur la fenêtre cible ────────────────
+    cours = data["cours"].apply(pd.to_numeric, errors="coerce")
+    mask  = (cours.index >= pd.to_datetime(target_start)) & \
+            (cours.index <= pd.to_datetime(target_end))
+    sub   = cours.loc[mask]
+
+    if sub.empty or len(sub) < 2:
+        return None, None, None
+
+    returns = {}
+    for t in X_df.index:
+        if t not in sub.columns:
+            continue
+        s = sub[t].dropna()
+        if len(s) < 2:
+            continue
+        returns[t] = (s.iloc[-1] - s.iloc[0]) / s.iloc[0]
+
+    if len(returns) < 5:
+        return None, None, None
+
+    y      = pd.Series(returns)
+    common = X_df.index.intersection(y.index)
+    if len(common) < 5:
+        return None, None, None
+
+    return X_df.loc[common], y.loc[common], list(common)
+
+
+def optimize_betas_ml(data, train_start, train_end,
+                      target_start, target_end, year, n_estimators=200):
+    """
+    Pipeline complet :
+      1. Recalcule les scores factoriels sur [train_start → train_end]
+      2. Cible Y = rendements réalisés sur [target_start → target_end]
+      3. Entraîne RF + GB, retourne les importances normalisées comme β_i
+    """
+    FACTOR_NAMES = ["Value", "Momentum", "Volatilité", "Dividende", "Liquidité"]
+
+    X, y, tickers = build_ml_dataset(
+        data, train_start, train_end,
+        target_start, target_end, year
+    )
+    if X is None:
+        return None, None, None
+
+    scaler = StandardScaler()
+    X_sc   = scaler.fit_transform(X)
+
+    results = {}
+
+    # ── Random Forest ──────────────────────────────────────────
+    rf = RandomForestRegressor(
+        n_estimators=n_estimators,
+        max_features="sqrt",
+        min_samples_leaf=2,
+        random_state=42,
+        n_jobs=-1
+    )
+    rf.fit(X_sc, y)
+    rf_imp = pd.Series(rf.feature_importances_, index=FACTOR_NAMES)
+    results["Random Forest"] = {
+        "importances": rf_imp,
+        "r2": rf.score(X_sc, y),
+    }
+
+    # ── Gradient Boosting ──────────────────────────────────────
+    gb = GradientBoostingRegressor(
+        n_estimators=n_estimators,
+        max_depth=3,
+        learning_rate=0.05,
+        subsample=0.8,
+        random_state=42
+    )
+    gb.fit(X_sc, y)
+    gb_imp = pd.Series(gb.feature_importances_, index=FACTOR_NAMES)
+    results["Gradient Boosting"] = {
+        "importances": gb_imp,
+        "r2": gb.score(X_sc, y),
+    }
+
+    # ── β combinés ────────────────────────────────────────────
+    combined  = (rf_imp * 0.5 + gb_imp * 0.5).clip(lower=0)
+    total     = combined.sum()
+    betas_opt = (combined / total).to_dict() if total > 0 \
+                else {f: 1/5 for f in FACTOR_NAMES}
+
+    return betas_opt, results, {
+        "X": X, "y": y, "tickers": tickers,
+        "train_window": f"{train_start} → {train_end}",
+        "target_window": f"{target_start} → {target_end}",
+        "year_fundamentals": year,
+    }
 
 # ─── PLOT HELPERS ─────────────────────────────────────────────
 PLOT_LAYOUT = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -1598,50 +1822,271 @@ with t5:
 with t6:
     st.markdown("<span class='pill'>Étape 2</span><p class='sh'>Indice Multifactoriel</p>", unsafe_allow_html=True)
     st.markdown("""<div class='fbox'>MF(t,T) = Σ_{i=1}^{5} β_i · F_i(t,T) &nbsp;·&nbsp; Σ β_i = 1<br>
-    Calibrez les β_i dans la barre latérale ← puis cliquez Calculer</div>""", unsafe_allow_html=True)
+    Calibrez les β manuellement via la sidebar, ou laissez le ML les optimiser automatiquement</div>""",
+    unsafe_allow_html=True)
 
-    # Lire les betas depuis session_state (toujours à jour)
     betas_mf = st.session_state.get("betas",
                {"Value":0.20,"Momentum":0.20,"Volatilité":0.20,"Dividende":0.20,"Liquidité":0.20})
-
     computed = list(fr.keys())
-
-    # Affichage live des β actuels
-    st.markdown("**β actifs (modifiables dans la barre latérale ←)**")
-    CLRS = {"Value":"#3b82f6","Momentum":"#8b5cf6","Volatilité":"#ef4444",
-            "Dividende":"#f59e0b","Liquidité":"#06b6d4"}
+    CLRS  = {"Value":"#3b82f6","Momentum":"#8b5cf6","Volatilité":"#ef4444",
+             "Dividende":"#f59e0b","Liquidité":"#06b6d4"}
     ICONS = {"Value":"💰","Momentum":"🚀","Volatilité":"📉","Dividende":"💸","Liquidité":"💧"}
-    bc = st.columns(5)
-    for i, (fname, beta) in enumerate(betas_mf.items()):
-        status = "✓ calculé" if fname in computed else "✗ non calculé"
-        bc[i].metric(
-            label=f"{ICONS.get(fname,'')} β {fname}",
-            value=f"{beta:.2f}",
-            delta=status
-        )
-
-    bs_mf = round(sum(betas_mf.values()), 4)
-    if abs(bs_mf - 1.0) > 0.01:
-        st.warning(f"⚠️ Σβ = {bs_mf:.2f} ≠ 1.0 — ajustez les curseurs dans la barre latérale")
-
-    st.markdown("---")
 
     if not computed:
         st.info("👈 Calculez au moins un facteur (onglets 💰 🚀 📉 💸 💧) avant de continuer.")
     else:
-        st.success(f"Facteurs calculés : {', '.join(computed)}")
+        st.success(f"✅ Facteurs calculés : {', '.join(computed)}")
 
+        # ── Choix du mode de calibration des β ────────────────────
+        st.markdown("---")
+        st.markdown("**⚖️ Mode de calibration des β_i**")
+        beta_mode = st.radio(
+            "Mode β",
+            ["🎛️ Manuel — curseurs sidebar", "🤖 Automatique — optimisation ML"],
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+
+        # ══════════════════════════════════════════════════════════
+        # MODE A — MANUEL
+        # ══════════════════════════════════════════════════════════
+        if beta_mode == "🎛️ Manuel — curseurs sidebar":
+            st.caption("Les β sont ceux définis dans la barre latérale ←")
+            bc = st.columns(5)
+            for i, fname in enumerate(["Value","Momentum","Volatilité","Dividende","Liquidité"]):
+                with bc[i]:
+                    st.markdown(
+                        f"<div style='background:#161d2e;border:1px solid {CLRS[fname]};"
+                        f"border-radius:8px;padding:10px;text-align:center;'>"
+                        f"<div style='font-size:16px'>{ICONS[fname]}</div>"
+                        f"<div style='font-size:10px;color:#94a3b8;'>{fname}</div>"
+                        f"<div style='font-size:20px;font-weight:800;color:{CLRS[fname]};'>"
+                        f"{betas_mf.get(fname,0):.2f}</div>"
+                        f"<div style='font-size:10px;color:#64748b;'>"
+                        f"{'✓' if fname in computed else '✗'}</div></div>",
+                        unsafe_allow_html=True
+                    )
+            bs_mf = round(sum(betas_mf.values()), 4)
+            if abs(bs_mf - 1.0) > 0.01:
+                st.warning(f"⚠️ Σβ = {bs_mf:.2f} — ajustez les curseurs dans la sidebar")
+
+        # ══════════════════════════════════════════════════════════
+        # MODE B — OPTIMISATION ML
+        # ══════════════════════════════════════════════════════════
+        else:
+            if not ML_AVAILABLE:
+                st.error("❌ scikit-learn non installé. Ajoutez `scikit-learn>=1.3.0` dans requirements.txt.")
+            else:
+                st.markdown("""<div class='fbox' style='margin-top:8px;'>
+                <b>Principe :</b> les scores factoriels sont recalculés sur la fenêtre d'entraînement,
+                indépendamment des onglets facteurs. Le modèle apprend quels facteurs ont le mieux
+                prédit les rendements réels sur la fenêtre cible.<br><br>
+                <b>Features X</b> : F_i(T) recalculés sur [Début features → Fin features]<br>
+                <b>Cible Y</b> : rendement total du titre T sur [Début cible → Fin cible]
+                </div>""", unsafe_allow_html=True)
+
+                ml_c1, ml_c2 = st.columns(2)
+                c_min = data["cours"].index.min().date()
+                c_max = data["cours"].index.max().date()
+
+                with ml_c1:
+                    st.markdown("**📐 Fenêtre Features X — Scores factoriels**")
+                    st.caption("Les 5 scores F_i(T) sont recalculés sur cette plage de dates")
+                    ml_ts = st.date_input("Début features", key="ml_ts",
+                        value=max(c_min, min(c_max, pd.Timestamp("2019-01-01").date())),
+                        min_value=c_min, max_value=c_max)
+                    ml_te = st.date_input("Fin features", key="ml_te",
+                        value=max(c_min, min(c_max, pd.Timestamp("2023-12-31").date())),
+                        min_value=c_min, max_value=c_max)
+                    fund_years = data.get("fundamental_years", [2024])
+                    ml_year = st.selectbox(
+                        "Année fondamentaux (Value/Dividende)",
+                        fund_years, key="ml_year",
+                        help="Année des CP, RN, FCF, CA, Rex utilisés pour recalculer les scores Value et Dividende"
+                    )
+
+                with ml_c2:
+                    st.markdown("**🎯 Fenêtre Cible Y — Rendements réalisés**")
+                    st.caption("Variable à prédire : rendement total (P_fin - P_deb) / P_deb")
+                    ml_tgs = st.date_input("Début cible", key="ml_tgs",
+                        value=max(c_min, min(c_max, pd.Timestamp("2024-01-01").date())),
+                        min_value=c_min, max_value=c_max)
+                    ml_tge = st.date_input("Fin cible", key="ml_tge",
+                        value=c_max, min_value=c_min, max_value=c_max)
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if ml_tgs < ml_tge:
+                        n_days = (ml_tge - ml_tgs).days
+                        st.caption(f"↳ Fenêtre cible : **{n_days} jours** calendaires")
+
+                # Validation visuelle des fenêtres
+                if ml_ts < ml_te and ml_tgs < ml_tge:
+                    if ml_te >= ml_tgs:
+                        st.warning("⚠️ Les fenêtres se chevauchent — la fin des features "
+                                   "est postérieure au début de la cible. "
+                                   "Idéalement : Fin features < Début cible.")
+                    else:
+                        gap = (ml_tgs - ml_te).days
+                        st.success(f"✅ Fenêtres valides · Écart entre les deux : {gap} jours")
+
+                ml_p1, ml_p2 = st.columns(2)
+                with ml_p1:
+                    n_trees = st.slider("Nombre d'arbres", 50, 500, 200, 50, key="ml_ntrees")
+                with ml_p2:
+                    apply_auto = st.toggle("Appliquer β ML à la sidebar automatiquement",
+                                           value=True, key="ml_auto")
+
+                if st.button("🤖 Optimiser les β par ML", type="primary"):
+                    if ml_ts >= ml_te:
+                        st.error("Fenêtre features invalide (début ≥ fin).")
+                    elif ml_tgs >= ml_tge:
+                        st.error("Fenêtre cible invalide (début ≥ fin).")
+                    else:
+                        with st.spinner("Recalcul des scores + Random Forest + Gradient Boosting..."):
+                            betas_opt, ml_res, ml_ds = optimize_betas_ml(
+                                data=data,
+                                train_start=ml_ts,  train_end=ml_te,
+                                target_start=ml_tgs, target_end=ml_tge,
+                                year=ml_year,
+                                n_estimators=n_trees
+                            )
+                        if betas_opt is None:
+                            st.error("Données insuffisantes. Vérifiez que la fenêtre features "
+                                     "contient des cours et que les fondamentaux existent "
+                                     "pour l'année sélectionnée.")
+                        else:
+                            st.session_state.ml_betas   = betas_opt
+                            st.session_state.ml_results = ml_res
+                            st.session_state.ml_dataset = ml_ds
+                            if apply_auto:
+                                km = {"Value":"sv_val","Momentum":"sv_mom",
+                                      "Volatilité":"sv_vol","Dividende":"sv_div","Liquidité":"sv_liq"}
+                                for f, b in betas_opt.items():
+                                    if f in km:
+                                        st.session_state[km[f]] = round(float(b), 4)
+                                st.success(
+                                    f"✅ β optimisés et appliqués à la sidebar\n\n"
+                                    f"· Features X : {ml_ts} → {ml_te}  "
+                                    f"(fondamentaux {ml_year})\n\n"
+                                    f"· Cible Y    : {ml_tgs} → {ml_tge}\n\n"
+                                    f"· Titres dans le dataset : {len(ml_ds['tickers'])}"
+                                )
+                                st.rerun()
+                            else:
+                                st.success(
+                                    f"✅ β optimisés · {len(ml_ds['tickers'])} titres · "
+                                    f"Cliquez 📥 ci-dessous pour les appliquer"
+                                )
+
+                # ── Résultats ML ───────────────────────────────────────
+                if "ml_results" in st.session_state and st.session_state.ml_results:
+                    ml_res = st.session_state.ml_results
+                    betas_opt = st.session_state.ml_betas
+                    ml_ds     = st.session_state.ml_dataset
+
+                    st.markdown("---")
+                    st.markdown("**β_i optimaux calculés par ML**")
+
+                    b_cols = st.columns(5)
+                    for i, fname in enumerate(["Value","Momentum","Volatilité","Dividende","Liquidité"]):
+                        bv = betas_opt.get(fname, 0)
+                        with b_cols[i]:
+                            st.markdown(
+                                f"<div style='background:#161d2e;border:1px solid {CLRS[fname]};"
+                                f"border-radius:8px;padding:10px;text-align:center;'>"
+                                f"<div style='font-size:16px'>{ICONS[fname]}</div>"
+                                f"<div style='font-size:10px;color:#94a3b8;'>{fname}</div>"
+                                f"<div style='font-size:22px;font-weight:800;color:{CLRS[fname]};'>"
+                                f"{bv:.3f}</div>"
+                                f"<div style='font-size:10px;color:#64748b;'>{bv*100:.1f}%</div>"
+                                f"</div>",
+                                unsafe_allow_html=True
+                            )
+
+                    # Graphique comparaison RF vs GB
+                    st.markdown("**Comparaison Random Forest vs Gradient Boosting**")
+                    factors_ord = ["Value","Momentum","Volatilité","Dividende","Liquidité"]
+                    rf_imp = ml_res["Random Forest"]["importances"]
+                    gb_imp = ml_res["Gradient Boosting"]["importances"]
+                    comb   = (rf_imp*0.5 + gb_imp*0.5)
+                    x_lbl  = [f"{ICONS.get(f,'')} {f}" for f in factors_ord]
+
+                    fig_ml = go.Figure()
+                    fig_ml.add_trace(go.Bar(name="Random Forest", x=x_lbl,
+                        y=[rf_imp.get(f,0) for f in factors_ord],
+                        marker_color="#3b82f6", opacity=0.8))
+                    fig_ml.add_trace(go.Bar(name="Gradient Boosting", x=x_lbl,
+                        y=[gb_imp.get(f,0) for f in factors_ord],
+                        marker_color="#8b5cf6", opacity=0.8))
+                    fig_ml.add_trace(go.Scatter(name="β combiné", x=x_lbl,
+                        y=[comb.get(f,0) for f in factors_ord],
+                        mode="lines+markers",
+                        line=dict(color="#06b6d4", width=2, dash="dash"),
+                        marker=dict(size=8, symbol="diamond")))
+                    fig_ml.update_layout(barmode="group",
+                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                        font=dict(color="#94a3b8", family="JetBrains Mono"), height=300,
+                        legend=dict(orientation="h", y=1.1, bgcolor="rgba(0,0,0,0)"),
+                        margin=dict(l=10,r=10,t=45,b=30),
+                        xaxis=dict(gridcolor="#1e2d45"),
+                        yaxis=dict(gridcolor="#1e2d45", title="Importance"))
+                    st.plotly_chart(fig_ml, width="stretch")
+
+                    # Tableau comparatif β ML vs sidebar
+                    st.markdown("**β ML optimaux vs β sidebar actuels**")
+                    cur = st.session_state.get("betas",{f:0.20 for f in factors_ord})
+                    rows_cmp = []
+                    for f in factors_ord:
+                        b_ml  = betas_opt.get(f, 0)
+                        b_cur = cur.get(f, 0)
+                        diff  = b_ml - b_cur
+                        arr   = "▲" if diff > 0.01 else ("▼" if diff < -0.01 else "≈")
+                        rows_cmp.append({
+                            "Facteur": f"{ICONS.get(f,'')} {f}",
+                            "β ML": f"{b_ml:.4f}",
+                            "β sidebar": f"{b_cur:.4f}",
+                            "Δ": f"{arr} {diff:+.4f}",
+                            "R² RF": f"{ml_res['Random Forest']['r2']:.4f}",
+                            "R² GB": f"{ml_res['Gradient Boosting']['r2']:.4f}",
+                        })
+                    st.dataframe(pd.DataFrame(rows_cmp), width="stretch", hide_index=True)
+
+                    # Infos dataset
+                    st.markdown("**ℹ️ Résumé du dataset ML**")
+                    di1, di2, di3, di4 = st.columns(4)
+                    di1.metric("Titres", len(ml_ds["tickers"]))
+                    di2.metric("Features X", ml_ds["X"].shape[1])
+                    di3.metric("Rdt cible max", f"{ml_ds['y'].max():.2%}")
+                    di4.metric("Rdt cible min", f"{ml_ds['y'].min():.2%}")
+                    st.caption(
+                        f"Fenêtre features : **{ml_ds.get('train_window','—')}** "
+                        f"(fondamentaux {ml_ds.get('year_fundamentals','—')})  ·  "
+                        f"Fenêtre cible : **{ml_ds.get('target_window','—')}**"
+                    )
+
+                    if not apply_auto or "ml_betas" in st.session_state:
+                        if st.button("📥 Appliquer les β ML à la sidebar", key="apply_ml_btn"):
+                            km = {"Value":"sv_val","Momentum":"sv_mom",
+                                  "Volatilité":"sv_vol","Dividende":"sv_div","Liquidité":"sv_liq"}
+                            for f, b in betas_opt.items():
+                                if f in km:
+                                    st.session_state[km[f]] = round(float(b), 4)
+                            st.rerun()
+
+                    # Mise à jour de betas_mf pour le calcul MF ci-dessous
+                    betas_mf = betas_opt
+
+        # ── Calcul MF (commun aux deux modes) ─────────────────────
+        st.markdown("---")
         if st.button("🔢 Calculer l'Indice MF", type="primary"):
             mf = compute_multifactor(fr, betas_mf)
             st.session_state.mf_scores = mf
-            st.success(f"✅ {len(mf)} titres classés · β = {betas_mf}")
+            st.success(f"✅ {len(mf)} titres classés · β = { {k: round(v,3) for k,v in betas_mf.items()} }")
 
         if st.session_state.mf_scores is not None:
             mf = st.session_state.mf_scores
             st.markdown("---")
             st.plotly_chart(score_bar(mf, "#3b82f6", height=380), width="stretch")
 
-            # Décomposition factorielle
             st.markdown("**Décomposition factorielle — Top 15**")
             top15 = mf.head(15).index
             fig_s = go.Figure()
@@ -1654,24 +2099,23 @@ with t6:
                     x=list(top15), y=vals,
                     marker_color=CLRS.get(fname, "#64748b"), opacity=0.85
                 ))
-            fig_s.update_layout(
-                barmode="stack", **{**PLOT_LAYOUT, "height": 340,
-                "legend": dict(orientation="h", y=1.08, bgcolor="rgba(0,0,0,0)"),
-                "margin": dict(l=10, r=10, t=50, b=50)}
-            )
+            fig_s.update_layout(barmode="stack",
+                **{**PLOT_LAYOUT, "height":340,
+                   "legend":dict(orientation="h",y=1.08,bgcolor="rgba(0,0,0,0)"),
+                   "margin":dict(l=10,r=10,t=50,b=50)})
             st.plotly_chart(fig_s, width="stretch")
 
-            tbl = mf.reset_index()
-            tbl.columns = ["Ticker", "Score MF"]
-            tbl.insert(0, "Rang", range(1, len(tbl) + 1))
-            tbl["Score MF"] = tbl["Score MF"].round(6)
-            st.dataframe(tbl, width="stretch", hide_index=True)
+            tbl_mf = mf.reset_index()
+            tbl_mf.columns = ["Ticker","Score MF"]
+            tbl_mf.insert(0,"Rang",range(1,len(tbl_mf)+1))
+            tbl_mf["Score MF"] = tbl_mf["Score MF"].round(6)
+            st.dataframe(tbl_mf, width="stretch", hide_index=True)
 
             buf = io.BytesIO()
-            tbl.to_excel(buf, index=False)
+            tbl_mf.to_excel(buf, index=False)
             st.download_button("⬇️ Exporter classement MF", buf.getvalue(),
-                               "classement_MF.xlsx",
-                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                "classement_MF.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # ══ PORTEFEUILLE ═══════════════════════════════════════════
 with t7:
@@ -1911,6 +2355,7 @@ with t7:
             st.download_button("⬇️ Exporter le portefeuille (Excel)", buf.getvalue(),
                 "portefeuille_BRVM.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 
 # ══ DONNÉES ════════════════════════════════════════════════════
 with t8:
