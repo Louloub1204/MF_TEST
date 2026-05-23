@@ -15,13 +15,25 @@ try:
     ML_AVAILABLE = True
 except ImportError:
     ML_AVAILABLE = False
+
+# Assure que le dossier du script est dans sys.path
+# (nécessaire sur Streamlit Cloud où le CWD peut différer)
+import sys, os
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+if _APP_DIR not in sys.path:
+    sys.path.insert(0, _APP_DIR)
+
 try:
-    from fs_parser import parse_financial_file, merge_financial_data, save_financial_db, load_financial_db
+    from fs_parser import (parse_financial_file, merge_financial_data,
+                           save_financial_db, load_financial_db,
+                           validate_and_fix_units)
     from valuation_models import (valuation_pe, valuation_pb, valuation_ddm,
-                                   valuation_dcf, combined_price, compute_beta)
+                                   valuation_dcf, combined_price, compute_beta,
+                                   calibrate_params)
     VALUATION_AVAILABLE = True
-except ImportError:
+except ImportError as _e:
     VALUATION_AVAILABLE = False
+    _VALUATION_ERROR = str(_e)
 warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="CGF Gestion · SMF BRVM", page_icon="📊",
@@ -2380,6 +2392,8 @@ with t8:
 
     if not VALUATION_AVAILABLE:
         st.error("❌ Modules fs_parser.py et valuation_models.py introuvables.")
+        st.code(_VALUATION_ERROR if '_VALUATION_ERROR' in dir() else "Erreur inconnue")
+        st.info("Vérifiez que fs_parser.py et valuation_models.py sont à la racine du dépôt GitHub (même niveau que app.py).")
         st.stop()
 
     # ── Chargement du fichier états financiers ─────────────────
