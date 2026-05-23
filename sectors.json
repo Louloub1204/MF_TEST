@@ -1,0 +1,64 @@
+{
+  "TELECOMMUNICATIONS": [
+    "ORAC",
+    "ONTBF",
+    "SNTS"
+  ],
+  "SERVICES FINANCIERS": [
+    "BICB",
+    "BICC",
+    "BOAB",
+    "BOABF",
+    "BOAC",
+    "BOAM",
+    "BOAN",
+    "BOAS",
+    "CBIBF",
+    "ECOC",
+    "ETI",
+    "ETIT",
+    "NSBC",
+    "ORGT",
+    "SAFC",
+    "SGBC",
+    "SIBC"
+  ],
+  "CONSOMMATION DE BASE": [
+    "NTLC",
+    "PALC",
+    "SPHC",
+    "SICC",
+    "STBC",
+    "SOGC",
+    "SLBC",
+    "SCRC",
+    "UNLC"
+  ],
+  "ENERGIE": [
+    "SMBC",
+    "TTLC",
+    "TTLS",
+    "SHEC"
+  ],
+  "CONSOMMATION DISCRETIONNAIRE": [
+    "BNBC",
+    "CFAC",
+    "LNBB",
+    "NEIC",
+    "ABJC",
+    "PRSC",
+    "UNXC"
+  ],
+  "SERVICES PUBLICS": [
+    "CIEC",
+    "SDCC"
+  ],
+  "INDUSTRIELS": [
+    "SDSC",
+    "SIVC",
+    "SEMC",
+    "FTSC",
+    "STAC",
+    "CABC"
+  ]
+}

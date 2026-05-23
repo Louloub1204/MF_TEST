@@ -933,6 +933,27 @@ VALUATION_DB_PATH = "financial_db.json"
 if "fin_data" not in st.session_state:
     st.session_state.fin_data = load_financial_db(VALUATION_DB_PATH) if VALUATION_AVAILABLE else {}
 
+# ── Chargement de la classification sectorielle ───────────────
+@st.cache_data
+def load_sector_mapping():
+    """Charge sectors.json et retourne {ticker: secteur}."""
+    candidates = [
+        os.path.join(_APP_DIR, "sectors.json"),
+        "sectors.json",
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            mapping = {}
+            for sector, tickers in raw.items():
+                for t in tickers:
+                    mapping[t.strip().upper()] = sector
+            return mapping
+    return {}
+
+SECTOR_MAP = load_sector_mapping()
+
 # ─── SIDEBAR ──────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
@@ -2629,10 +2650,13 @@ with t8:
                           "🟡 Neutre") if not np.isnan(potentiel) else "—"
 
                 pm = v.get("prix_modeles", {})
-                # Secteur
-                fd = fin_data.get(ticker, {})
-                yr_last = max(fd.keys()) if fd else "—"
-                sect = fd.get(yr_last, {}).get("secteur", "—") if fd else "—"
+
+                # Secteur : priorité SECTOR_MAP (fichier officiel) → fallback fin_data
+                sect = SECTOR_MAP.get(ticker.upper())
+                if not sect:
+                    fd = fin_data.get(ticker, {})
+                    yr_last = max(fd.keys()) if fd else None
+                    sect = fd.get(yr_last, {}).get("secteur", "—") if fd and yr_last else "—"
 
                 rows.append({
                     "Ticker":      ticker,
@@ -2679,6 +2703,35 @@ with t8:
                 )
                 st.plotly_chart(fig_pot, width="stretch")
 
+                # Répartition des signaux par secteur
+                if SECTOR_MAP:
+                    st.markdown("**📊 Potentiel moyen par secteur**")
+                    df_sect = df_res[df_res["_pot_num"] != 0].copy()
+                    df_sect["Secteur_map"] = df_sect["Ticker"].apply(
+                        lambda t: SECTOR_MAP.get(t.upper(), "Autre")
+                    )
+                    sect_avg = df_sect.groupby("Secteur_map")["_pot_num"].mean().sort_values(ascending=False)
+                    fig_sect = go.Figure(go.Bar(
+                        x=sect_avg.index,
+                        y=sect_avg.values,
+                        marker=dict(
+                            color=["#10b981" if v > 0 else "#ef4444" for v in sect_avg.values],
+                            line=dict(width=0)
+                        ),
+                        text=[f"{v:+.1f}%" for v in sect_avg.values],
+                        textposition="outside",
+                        textfont=dict(size=10, color="#94a3b8"),
+                    ))
+                    fig_sect.add_hline(y=0, line_width=1, line_color="#475569")
+                    fig_sect.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                        font=dict(color="#94a3b8", family="JetBrains Mono"), height=320,
+                        margin=dict(l=10, r=10, t=20, b=80),
+                        xaxis=dict(gridcolor="#1e2d45", tickangle=-30),
+                        yaxis=dict(gridcolor="#1e2d45", ticksuffix="%"),
+                    )
+                    st.plotly_chart(fig_sect, width="stretch")
+
                 # Tableau transparence des paramètres calibrés
                 st.markdown("---")
                 st.markdown("**🔬 Transparence — Paramètres calibrés automatiquement**")
@@ -2690,6 +2743,7 @@ with t8:
                         continue
                     param_rows.append({
                         "Ticker":    ticker_p,
+                        "Secteur":   SECTOR_MAP.get(ticker_p.upper(), p.get("secteur","—")),
                         "Type":      "Banque" if p.get("is_bank") else "Société",
                         "β":         f"{p.get('beta',1):.2f}",
                         "ke":        f"{p.get('ke',0)*100:.1f}%",
