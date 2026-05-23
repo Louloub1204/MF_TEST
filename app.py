@@ -2430,9 +2430,45 @@ with t8:
         st.markdown("""<div class='fbox'>
         🤖 <b>Calibrage 100% automatique</b> — Zéro saisie manuelle<br>
         β calculé depuis cours historiques · ke/WACC via CAPM · kd depuis états financiers<br>
-        P/E et P/B calibrés sur les multiples historiques observés du titre · g_FCF = CAGR Rex/RN<br>
-        Seul paramètre ajustable : <b>horizon DCF</b> et <b>poids des modèles</b>
+        P/E et P/B calibrés sur les multiples historiques observés du titre · g_FCF = CAGR Rex/RN
         </div>""", unsafe_allow_html=True)
+
+        st.markdown("**📅 Fenêtre de calcul du Beta (β)**")
+        st.caption("Le beta mesure la sensibilité du titre au marché BRVM sur la période choisie. "
+                   "Une fenêtre longue (3–5 ans) donne un beta stable · courte (6–12 mois) capture le beta récent.")
+
+        c_min_v = data["cours"].index.min().date() if st.session_state.data else pd.Timestamp("2014-01-01").date()
+        c_max_v = data["cours"].index.max().date() if st.session_state.data else pd.Timestamp("2026-01-01").date()
+
+        bc1, bc2, bc3 = st.columns(3)
+        with bc1:
+            beta_start = st.date_input(
+                "Début fenêtre β", key="beta_start",
+                value=max(c_min_v, min(c_max_v, pd.Timestamp("2022-01-01").date())),
+                min_value=c_min_v, max_value=c_max_v,
+                help="Date de début pour estimer le beta"
+            )
+        with bc2:
+            beta_end = st.date_input(
+                "Fin fenêtre β", key="beta_end",
+                value=c_max_v,
+                min_value=c_min_v, max_value=c_max_v,
+                help="Date de fin pour estimer le beta (en général = aujourd'hui)"
+            )
+        with bc3:
+            if beta_start < beta_end and st.session_state.data:
+                cours_tmp  = st.session_state.data["cours"]
+                mask_beta  = (cours_tmp.index >= pd.to_datetime(beta_start)) & \
+                             (cours_tmp.index <= pd.to_datetime(beta_end))
+                n_jours = mask_beta.sum()
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.success(f"✅ **{n_jours}** jours de trading\n\n"
+                           f"≈ {n_jours//252} an(s) {(n_jours%252)//21} mois")
+            elif beta_start >= beta_end:
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.error("⚠️ Date début ≥ Date fin")
+
+        st.markdown("---")
 
         ac1, ac2 = st.columns(2)
         with ac1:
@@ -2497,7 +2533,9 @@ with t8:
                             p = calibrate_params(
                                 ticker, fin_data, nb_titres,
                                 cours_df, moy_cours,
-                                div_history=div_hist.get(ticker)
+                                div_history=div_hist.get(ticker),
+                                beta_date_start=beta_start,
+                                beta_date_end=beta_end,
                             )
                         except Exception:
                             p = None

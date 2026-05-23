@@ -18,25 +18,50 @@ SCALE           = 1_000_000  # DB en M FCFA → FCFA
 # BLOC 1 — PARAMÈTRES AUTO (calibrage depuis données réelles)
 # ══════════════════════════════════════════════════════════════
 
-def compute_beta(cours_df, ticker, window=252):
-    """Beta vs marché BRVM (proxy = moyenne équipondérée des titres)."""
-    ret = cours_df.apply(pd.to_numeric, errors="coerce").pct_change().dropna(how="all")
-    sub = ret.tail(window)
+def compute_beta(cours_df, ticker, window=252,
+                 date_start=None, date_end=None):
+    """
+    Beta vs marché BRVM.
+    Proxy marché = médiane des rendements (robuste aux titres peu liquides).
+    Forward-fill des cours avant calcul (cotation partielle BRVM).
+    Si date_start/date_end fournis, utilise cette plage.
+    Sinon utilise les `window` derniers jours de trading.
+    """
+    # Forward-fill pour gérer les jours sans cotation BRVM
+    prices = cours_df.apply(pd.to_numeric, errors="coerce").ffill()
+
+    if date_start is not None and date_end is not None:
+        mask   = (prices.index >= pd.to_datetime(date_start)) & \
+                 (prices.index <= pd.to_datetime(date_end))
+        sub    = prices.loc[mask]
+    else:
+        sub    = prices.tail(window)
+
     if ticker not in sub.columns or sub.empty:
         return 1.0
-    mkt    = sub.mean(axis=1)
-    t_ret  = sub[ticker].dropna()
-    common = t_ret.index.intersection(mkt.index)
-    if len(common) < 30:
+
+    ret = sub.pct_change().replace([np.inf, -np.inf], np.nan)
+
+    # Médiane comme proxy marché (plus robuste que la moyenne sur BRVM)
+    mkt   = ret.median(axis=1)
+    t_ret = ret[ticker].dropna()
+
+    common = t_ret.index.intersection(mkt.dropna().index)
+    if len(common) < 20:
         return 1.0
+
     cov = t_ret.loc[common].cov(mkt.loc[common])
     var = mkt.loc[common].var()
-    return float(np.clip(cov / var, 0.2, 3.0)) if var > 0 else 1.0
+    if not var or np.isnan(var) or var <= 0:
+        return 1.0
+
+    return float(np.clip(cov / var, 0.2, 3.0))
 
 
-def auto_ke(cours_df, ticker):
+def auto_ke(cours_df, ticker, date_start=None, date_end=None):
     """ke = Rf + β × prime_risque (CAPM)."""
-    beta = compute_beta(cours_df, ticker)
+    beta = compute_beta(cours_df, ticker,
+                        date_start=date_start, date_end=date_end)
     return RF + beta * MARKET_PREMIUM, beta
 
 
@@ -58,12 +83,16 @@ def auto_tax_rate(postes):
     return TAX_DEFAULT
 
 
-def auto_wacc(cours_df, ticker, postes):
+def auto_wacc(cours_df, ticker, postes,
+              beta_date_start=None, beta_date_end=None):
     """
     WACC = ke × E/(D+E) + kd×(1-t) × D/(D+E)
     Tous les paramètres viennent des données réelles.
+    La fenêtre beta est configurable via beta_date_start/end.
     """
-    ke, beta = auto_ke(cours_df, ticker)
+    ke, beta = auto_ke(cours_df, ticker,
+                       date_start=beta_date_start,
+                       date_end=beta_date_end)
     kd       = auto_kd(postes)
     tax      = auto_tax_rate(postes)
     debt_m   = abs(postes.get("dette_financiere") or 0)
@@ -202,10 +231,12 @@ def _sector_pb(data_dict):
 # ══════════════════════════════════════════════════════════════
 
 def calibrate_params(ticker, fin_data, nb_titres, cours_df,
-                     moy_cours=None, div_history=None):
+                     moy_cours=None, div_history=None,
+                     beta_date_start=None, beta_date_end=None):
     """
-    Calcule automatiquement tous les paramètres de valorisation
-    pour un titre donné. Retourne un dict complet des paramètres.
+    Calcule automatiquement tous les paramètres de valorisation.
+    beta_date_start / beta_date_end : plage pour le calcul du beta.
+    Si non fournis, utilise les 252 derniers jours.
     """
     d = fin_data.get(ticker, {})
     if not d:
@@ -216,7 +247,11 @@ def calibrate_params(ticker, fin_data, nb_titres, cours_df,
     is_bank = postes.get("type") == "banque"
 
     # ── Paramètres marché ──────────────────────────────────────
-    wacc, ke, kd, tax, beta, w_d, w_e = auto_wacc(cours_df, ticker, postes)
+    wacc, ke, kd, tax, beta, w_d, w_e = auto_wacc(
+        cours_df, ticker, postes,
+        beta_date_start=beta_date_start,
+        beta_date_end=beta_date_end
+    )
     g_rn  = auto_growth(d, "rn")
     g_rex = auto_growth(d, "rex") if not is_bank else g_rn
     g_ca  = auto_growth(d, "ca")
