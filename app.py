@@ -2394,6 +2394,25 @@ with t8:
         if fs_file:
             with st.spinner("Parsing des états financiers..."):
                 new_data = parse_financial_file(fs_file)
+                # Validation automatique des unités
+                nb_titres_tmp = st.session_state.data.get("nb_titres", {}) \
+                                if st.session_state.data else {}
+                cours_tmp     = st.session_state.data.get("cours", pd.DataFrame()) \
+                                if st.session_state.data else pd.DataFrame()
+                if nb_titres_tmp and not cours_tmp.empty:
+                    from fs_parser import validate_and_fix_units
+                    new_data, corrections = validate_and_fix_units(
+                        new_data, nb_titres_tmp, cours_tmp
+                    )
+                    if corrections:
+                        st.warning(
+                            f"⚠️ Correction automatique d'unités appliquée sur "
+                            f"{len(corrections)} ticker(s) : "
+                            + ", ".join(
+                                f"{t} (PE {v['pe_avant']}x → {v['pe_apres']}x)"
+                                for t, v in corrections.items()
+                            )
+                        )
                 existing = load_financial_db(VALUATION_DB_PATH)
                 merged   = merge_financial_data(existing, new_data)
                 save_financial_db(merged, VALUATION_DB_PATH)

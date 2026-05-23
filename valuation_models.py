@@ -353,13 +353,24 @@ def valuation_pe(ticker, fin_data, nb_titres, cours_df=None,
 
     n   = nb_titres[ticker]
     eps = rn / n
+    if eps <= 0:
+        return None
 
     p = params or calibrate_params(ticker, fin_data, nb_titres,
                                    cours_df or pd.DataFrame(), moy_cours)
     if not p:
         return None
 
-    pe  = p["pe_target"]
+    # Sanity check : PE implicite (cours/EPS) dans une plage raisonnable
+    if cours_df is not None and not isinstance(cours_df, type(None)) \
+            and hasattr(cours_df, 'columns') and ticker in cours_df.columns:
+        s = cours_df[ticker].dropna()
+        if not s.empty:
+            pe_impl = float(s.iloc[-1]) / eps
+            if pe_impl > 200 or pe_impl < 0.2:
+                return None  # EPS incohérent → on n'affiche pas
+
+    pe    = p["pe_target"]
     price = eps * pe
 
     return {

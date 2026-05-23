@@ -199,7 +199,63 @@ def parse_financial_file(filepath):
     return data
 
 
-def merge_financial_data(existing: dict, new_data: dict) -> dict:
+def validate_and_fix_units(data, nb_titres, cours_df,
+                           pe_min=0.5, pe_max=150):
+    """
+    Valide la cohérence des unités en vérifiant que le P/E implicite
+    (cours / EPS) est dans une plage raisonnable [pe_min, pe_max].
+
+    Si le P/E implicite est hors plage et que diviser les valeurs par 1000
+    donne un P/E raisonnable → corrige toutes les valeurs numériques du ticker.
+
+    Retourne data corrigé + dict des corrections appliquées.
+    """
+    corrections = {}
+    BENCH = {'Unnamed: 0','ANNEE','JOUR','Unnamed: 62','.BRVMCI','BRVM30',
+             'BRVM PREST','BRVM-PRINC','BRVM-C TR','BRVM-CB','BRVM-CD',
+             'BRVM-ENER','BRVM-SFIN','BRVM-SPUB','Date'}
+    ticker_cols = [c for c in cours_df.columns if c not in BENCH]
+    cours_clean  = cours_df[ticker_cols].apply(pd.to_numeric, errors="coerce")
+
+    for ticker, years in data.items():
+        yr  = max(years.keys())
+        rn  = years[yr].get("rn", 0)
+        n   = nb_titres.get(ticker, 0)
+        if not n or not rn or rn <= 0:
+            continue
+
+        # Cours actuel
+        if ticker not in cours_clean.columns:
+            continue
+        s = cours_clean[ticker].dropna()
+        if s.empty:
+            continue
+        cours_act = float(s.iloc[-1])
+        if cours_act <= 0:
+            continue
+
+        eps = rn / n
+        pe  = cours_act / eps if eps != 0 else 0
+
+        if pe_min <= pe <= pe_max:
+            continue  # valeurs cohérentes
+
+        # Essai division par 1000
+        pe2 = cours_act / (eps / 1000) if eps != 0 else 0
+        if pe_min <= pe2 <= pe_max:
+            # Corriger toutes les valeurs numériques de toutes les années
+            for yr2, postes in data[ticker].items():
+                for k, v in postes.items():
+                    if isinstance(v, float) and not np.isnan(v) and \
+                       k not in ("type", "unite", "secteur"):
+                        data[ticker][yr2][k] = v / 1000
+            corrections[ticker] = {
+                "action":   "÷1000",
+                "pe_avant": round(pe, 1),
+                "pe_apres": round(pe2, 1),
+            }
+
+    return data, corrections
     """
     Fusionne les nouvelles données dans la base existante.
     Logique : nouvelles années ajoutées, années existantes enrichies
