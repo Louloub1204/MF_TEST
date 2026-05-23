@@ -75,11 +75,23 @@ BANK_TICKERS = {"SGBC","SIBC","NSBC","ECOC","BICC","BOAB","BOAS","BOABF","BOAM"}
 
 
 def detect_unit(header_text):
-    """Détecte l'unité depuis la ligne de titre de la feuille."""
-    for unit in UNIT_FACTORS:
+    """
+    Détecte l'unité depuis la ligne de titre de la feuille.
+    Gère les variantes françaises : 'millions', 'milliers', 'milliards'.
+    Retourne (label, facteur_vers_FCFA).
+    """
+    t = str(header_text).lower()
+    if "milliard" in t:
+        return "Mds FCFA", 1_000_000_000
+    if "million" in t:
+        return "M FCFA", 1_000_000
+    if "millier" in t:
+        return "K FCFA", 1_000
+    # Fallback : cherche les labels exacts
+    for unit, factor in UNIT_FACTORS.items():
         if unit in str(header_text):
-            return unit
-    return "FCFA"
+            return unit, factor
+    return "FCFA", 1
 
 
 def extract_sheet(df_raw, ticker):
@@ -87,8 +99,7 @@ def extract_sheet(df_raw, ticker):
     Extrait les postes financiers d'une feuille individuelle.
     Retourne dict {year: {poste: valeur_en_FCFA}}
     """
-    unit_str = detect_unit(df_raw.iloc[0, 0])
-    factor   = UNIT_FACTORS.get(unit_str, 1)
+    unit_str, factor = detect_unit(df_raw.iloc[0, 0])
 
     is_bank  = ticker in BANK_TICKERS
     row_map  = BANK_ROWS if is_bank else CORP_ROWS

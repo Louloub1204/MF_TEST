@@ -11,42 +11,46 @@ RF              = 0.06    # Taux sans risque BCEAO 10 ans
 MARKET_PREMIUM  = 0.06    # Prime de risque marché BRVM estimée
 TERMINAL_GROWTH = 0.045   # Croissance PIB UEMOA long terme
 TAX_DEFAULT     = 0.25    # IS moyen UEMOA
-SCALE           = 1_000_000  # DB en M FCFA → FCFA
+# Les valeurs en DB sont déjà en FCFA après conversion par le parseur
+# Pas de facteur d'échelle supplémentaire nécessaire
 
 
 # ══════════════════════════════════════════════════════════════
 # BLOC 1 — PARAMÈTRES AUTO (calibrage depuis données réelles)
 # ══════════════════════════════════════════════════════════════
 
+BENCH_COLS = {
+    'Unnamed: 0','ANNEE','JOUR','Unnamed: 62','.BRVMCI','BRVM30',
+    'BRVM PREST','BRVM-PRINC','BRVM-C TR','BRVM-CB','BRVM-CD',
+    'BRVM-ENER','BRVM-SFIN','BRVM-SPUB','Date'
+}
+
 def compute_beta(cours_df, ticker, window=252,
                  date_start=None, date_end=None):
     """
     Beta vs marché BRVM.
-    Proxy marché = médiane des rendements (robuste aux titres peu liquides).
+    Proxy marché = médiane des rendements des titres (hors indices BRVM).
     Forward-fill des cours avant calcul (cotation partielle BRVM).
-    Si date_start/date_end fournis, utilise cette plage.
-    Sinon utilise les `window` derniers jours de trading.
     """
-    # Forward-fill pour gérer les jours sans cotation BRVM
-    prices = cours_df.apply(pd.to_numeric, errors="coerce").ffill()
+    # Exclure les colonnes d'indices BRVM du proxy marché
+    ticker_cols = [c for c in cours_df.columns if c not in BENCH_COLS]
+    prices = cours_df[ticker_cols].apply(pd.to_numeric, errors="coerce").ffill()
 
     if date_start is not None and date_end is not None:
-        mask   = (prices.index >= pd.to_datetime(date_start)) & \
-                 (prices.index <= pd.to_datetime(date_end))
-        sub    = prices.loc[mask]
+        mask  = (prices.index >= pd.to_datetime(date_start)) & \
+                (prices.index <= pd.to_datetime(date_end))
+        sub   = prices.loc[mask]
     else:
-        sub    = prices.tail(window)
+        sub   = prices.tail(window)
 
     if ticker not in sub.columns or sub.empty:
         return 1.0
 
-    ret = sub.pct_change().replace([np.inf, -np.inf], np.nan)
-
-    # Médiane comme proxy marché (plus robuste que la moyenne sur BRVM)
-    mkt   = ret.median(axis=1)
+    ret   = sub.pct_change().replace([np.inf, -np.inf], np.nan)
+    mkt   = ret.median(axis=1)        # médiane robuste
     t_ret = ret[ticker].dropna()
-
     common = t_ret.index.intersection(mkt.dropna().index)
+
     if len(common) < 20:
         return 1.0
 
@@ -140,7 +144,7 @@ def auto_pe_target(cours_df, data_dict, ticker, nb_titres, moy_cours=None):
         rn = postes.get("rn")
         if not rn or rn <= 0:
             continue
-        eps = (rn * SCALE) / n
+        eps = rn / n
 
         # Cours moyen annuel depuis historique
         cours_yr = None
@@ -180,7 +184,7 @@ def auto_pb_target(cours_df, data_dict, ticker, nb_titres, moy_cours=None):
         cp = postes.get("capitaux_propres") or postes.get("capitaux_propres_mere")
         if not cp or cp <= 0:
             continue
-        bvps = (cp * SCALE) / n
+        bvps = cp / n
 
         cours_yr = None
         if moy_cours is not None and not moy_cours.empty:
@@ -348,7 +352,7 @@ def valuation_pe(ticker, fin_data, nb_titres, cours_df=None,
         return None
 
     n   = nb_titres[ticker]
-    eps = (rn * SCALE) / n
+    eps = rn / n
 
     p = params or calibrate_params(ticker, fin_data, nb_titres,
                                    cours_df or pd.DataFrame(), moy_cours)
@@ -381,7 +385,7 @@ def valuation_pb(ticker, fin_data, nb_titres, cours_df=None,
         return None
 
     n    = nb_titres[ticker]
-    bvps = (cp * SCALE) / n
+    bvps = cp / n
 
     p = params or calibrate_params(ticker, fin_data, nb_titres,
                                    cours_df or pd.DataFrame(), moy_cours)
@@ -459,7 +463,7 @@ def valuation_dcf(ticker, fin_data, nb_titres, cours_df,
     debt_m   = abs(postes.get("dette_financiere") or 0)
     cash_m   = abs(postes.get("tresorerie") or 0)
     eq_val_m = max(ev_m - debt_m + cash_m, 0)
-    price    = (eq_val_m * SCALE) / n
+    price    = eq_val_m / n
 
     return {
         "modele": "DCF",
