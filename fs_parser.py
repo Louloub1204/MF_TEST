@@ -199,6 +199,27 @@ def parse_financial_file(filepath):
     return data
 
 
+def merge_financial_data(existing: dict, new_data: dict) -> dict:
+    """
+    Fusionne les nouvelles données dans la base existante.
+    Logique : nouvelles années ajoutées, années existantes enrichies
+    (nouvelles clés ajoutées, valeurs existantes conservées sauf si None).
+    """
+    merged = {t: dict(yrs) for t, yrs in existing.items()}
+
+    for ticker, years in new_data.items():
+        if ticker not in merged:
+            merged[ticker] = {}
+        for year, postes in years.items():
+            if year not in merged[ticker]:
+                merged[ticker][year] = postes
+            else:
+                for k, v in postes.items():
+                    if k not in merged[ticker][year] or merged[ticker][year][k] is None:
+                        merged[ticker][year][k] = v
+    return merged
+
+
 def validate_and_fix_units(data, nb_titres, cours_df,
                            pe_min=0.5, pe_max=150):
     """
