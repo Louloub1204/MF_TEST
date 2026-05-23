@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import io
+import json
+import os
 import warnings
 from scipy.optimize import minimize
 from scipy.cluster.hierarchy import linkage, fcluster
@@ -10,11 +12,16 @@ from scipy.spatial.distance import squareform
 try:
     from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
     from sklearn.preprocessing import StandardScaler
-    from sklearn.model_selection import cross_val_score
-    from sklearn.inspection import permutation_importance
     ML_AVAILABLE = True
 except ImportError:
     ML_AVAILABLE = False
+try:
+    from fs_parser import parse_financial_file, merge_financial_data, save_financial_db, load_financial_db
+    from valuation_models import (valuation_pe, valuation_pb, valuation_ddm,
+                                   valuation_dcf, combined_price, compute_beta)
+    VALUATION_AVAILABLE = True
+except ImportError:
+    VALUATION_AVAILABLE = False
 warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="CGF Gestion · SMF BRVM", page_icon="📊",
@@ -909,6 +916,11 @@ for k in ["data","factor_results","mf_scores","pw"]:
     if k not in st.session_state:
         st.session_state[k] = {} if k == "factor_results" else None
 
+# Valuation DB path
+VALUATION_DB_PATH = "financial_db.json"
+if "fin_data" not in st.session_state:
+    st.session_state.fin_data = load_financial_db(VALUATION_DB_PATH) if VALUATION_AVAILABLE else {}
+
 # ─── SIDEBAR ──────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
@@ -1466,9 +1478,10 @@ if not data:
 fr = st.session_state.factor_results
 
 # ─── TABS ─────────────────────────────────────────────────────
-t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
+t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs([
     "💰 Value", "🚀 Momentum", "📉 Volatilité", "💸 Dividende",
-    "💧 Liquidité", "🔢 Indice MF", "📂 Portefeuille", "ℹ️ Données"])
+    "💧 Liquidité", "🔢 Indice MF", "📂 Portefeuille",
+    "📈 Valorisation", "ℹ️ Données"])
 
 # ══ VALUE ══════════════════════════════════════════════════════
 with t1:
@@ -2357,8 +2370,278 @@ with t7:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
-# ══ DONNÉES ════════════════════════════════════════════════════
+# ══ VALORISATION ═══════════════════════════════════════════════
 with t8:
+    st.markdown("<span class='pill'>Valorisation · Prix Cible</span><p class='sh'>Modèles de valorisation théorique</p>", unsafe_allow_html=True)
+    st.markdown("""<div class='fbox'>
+    DDM · P/E relatif · P/B · DCF simplifié → Prix cible combiné par titre<br>
+    Chargez votre fichier d'états financiers · La base est persistée entre les sessions
+    </div>""", unsafe_allow_html=True)
+
+    if not VALUATION_AVAILABLE:
+        st.error("❌ Modules fs_parser.py et valuation_models.py introuvables.")
+        st.stop()
+
+    # ── Chargement du fichier états financiers ─────────────────
+    st.markdown("**📁 États Financiers**")
+    col_up, col_db = st.columns([2, 1])
+
+    with col_up:
+        fs_file = st.file_uploader(
+            "Charger Etats_Financiers_BRVM.xlsx (nouveau chargement = mise à jour cumulative)",
+            type=["xlsx","xls"], key="fs_uploader"
+        )
+        if fs_file:
+            with st.spinner("Parsing des états financiers..."):
+                new_data = parse_financial_file(fs_file)
+                existing = load_financial_db(VALUATION_DB_PATH)
+                merged   = merge_financial_data(existing, new_data)
+                save_financial_db(merged, VALUATION_DB_PATH)
+                st.session_state.fin_data = merged
+            tickers_new = set(new_data.keys()) - set(existing.keys())
+            years_new   = {yr for t in new_data.values() for yr in t.keys()}
+            st.success(
+                f"✅ {len(new_data)} sociétés chargées · "
+                f"Années : {sorted(years_new)} · "
+                f"Nouveaux tickers : {sorted(tickers_new) if tickers_new else 'aucun'} · "
+                f"Base totale : {len(merged)} sociétés"
+            )
+
+    with col_db:
+        fin_data = st.session_state.fin_data
+        if fin_data:
+            all_years = sorted({yr for t in fin_data.values() for yr in t.keys()})
+            st.metric("Sociétés en base", len(fin_data))
+            st.metric("Années disponibles", f"{min(all_years)}–{max(all_years)}")
+            if os.path.exists(VALUATION_DB_PATH):
+                db_data = json.load(open(VALUATION_DB_PATH))
+                st.caption(f"Dernière mise à jour : {db_data.get('metadata',{}).get('last_updated','—')[:10]}")
+        else:
+            st.info("Aucune donnée en base. Chargez un fichier.")
+
+    _has_fin_data = bool(fin_data)
+    if not _has_fin_data:
+        st.info("📂 Aucune donnée en base. Chargez votre fichier **Etats_Financiers_BRVM.xlsx** ci-dessus pour commencer.")
+
+    if _has_fin_data:
+        st.markdown("---")
+
+        # ── Paramètres des modèles ─────────────────────────────────
+        st.markdown("**⚙️ Paramètres des modèles**")
+        par1, par2, par3, par4 = st.columns(4)
+        with par1:
+            st.markdown("**DDM**")
+            ke_ddm = st.number_input("Taux actualisation ke (%)", 6.0, 20.0, 12.0, 0.5, key="ddm_ke") / 100
+            g_ddm  = st.number_input("Croissance dividendes g (%)", 0.0, 15.0, 5.0, 0.5, key="ddm_g") / 100
+        with par2:
+            st.markdown("**P/E relatif**")
+            pe_bank = st.number_input("P/E cible Banques", 4.0, 20.0, 8.0, 0.5, key="pe_bank")
+            pe_ind  = st.number_input("P/E cible Industrie/Autres", 4.0, 30.0, 11.0, 0.5, key="pe_ind")
+            pe_tel  = st.number_input("P/E cible Télécom", 4.0, 30.0, 15.0, 0.5, key="pe_tel")
+        with par3:
+            st.markdown("**P/B**")
+            pb_bank = st.number_input("P/B cible Banques", 0.5, 5.0, 1.2, 0.1, key="pb_bank")
+            pb_corp = st.number_input("P/B cible Autres", 0.5, 5.0, 1.5, 0.1, key="pb_corp")
+        with par4:
+            st.markdown("**DCF**")
+            dcf_horizon = st.slider("Horizon projection (ans)", 3, 10, 5, 1, key="dcf_h")
+            g_tv_dcf    = st.number_input("Croissance terminale (%)", 1.0, 8.0, 4.0, 0.5, key="dcf_gtv") / 100
+            wacc_dcf    = st.number_input("WACC manuel (0 = auto) (%)", 0.0, 25.0, 0.0, 0.5, key="dcf_wacc") / 100
+
+        # Poids des modèles dans le prix combiné
+        st.markdown("**⚖️ Poids des modèles dans le prix cible combiné**")
+        wc1, wc2, wc3, wc4 = st.columns(4)
+        w_ddm = wc1.number_input("w DDM",  0.0, 1.0, 0.20, 0.05, key="w_ddm")
+        w_pe  = wc2.number_input("w P/E",  0.0, 1.0, 0.30, 0.05, key="w_pe")
+        w_pb  = wc3.number_input("w P/B",  0.0, 1.0, 0.20, 0.05, key="w_pb")
+        w_dcf = wc4.number_input("w DCF",  0.0, 1.0, 0.30, 0.05, key="w_dcf")
+        model_weights = {"DDM": w_ddm, "P/E": w_pe, "P/B": w_pb, "DCF": w_dcf}
+
+        st.markdown("---")
+
+        # ── Sélection des titres ────────────────────────────────────
+        av_tickers = sorted(fin_data.keys())
+        if st.session_state.data:
+            # Priorité aux titres communs avec les données de cours
+            cours_tickers = st.session_state.data.get("tickers", [])
+            common = [t for t in av_tickers if t in cours_tickers]
+            only_fs = [t for t in av_tickers if t not in cours_tickers]
+        else:
+            common, only_fs = av_tickers, []
+
+        sel_tickers = st.multiselect(
+            "Titres à valoriser",
+            options=av_tickers,
+            default=common[:15] if len(common) >= 15 else common,
+            help="Titres disponibles dans les états financiers chargés"
+        )
+
+        if st.button("📈 Calculer les valorisations", type="primary"):
+            if not sel_tickers:
+                st.warning("Sélectionnez au moins un titre.")
+            else:
+                # Récupérer nb_titres et dividendes du fichier SMF si disponible
+                nb_titres  = st.session_state.data.get("nb_titres", {}) if st.session_state.data else {}
+                dividendes = st.session_state.data.get("dividendes", pd.DataFrame()) if st.session_state.data else pd.DataFrame()
+                cours_df   = st.session_state.data.get("cours", pd.DataFrame()) if st.session_state.data else pd.DataFrame()
+
+                # Convertir historique dividendes → {ticker: {year: div}}
+                div_hist = {}
+                if not dividendes.empty and "Date" in dividendes.columns:
+                    for _, row in dividendes.iterrows():
+                        yr = int(row["Date"])
+                        for t in sel_tickers:
+                            if t in dividendes.columns:
+                                v = row.get(t)
+                                if pd.notna(v) and v > 0:
+                                    div_hist.setdefault(t, {})[yr] = float(v)
+
+                results_all = {}
+                with st.spinner(f"Valorisation de {len(sel_tickers)} titres..."):
+                    for ticker in sel_tickers:
+                        is_bank = fin_data.get(ticker, {}).get(
+                            max(fin_data[ticker].keys()) if fin_data.get(ticker) else 2024, {}
+                        ).get("type") == "banque"
+
+                        # P/E cible selon secteur
+                        sector = fin_data.get(ticker, {}).get(
+                            max(fin_data[ticker].keys()) if fin_data.get(ticker) else 2024, {}
+                        ).get("secteur", "")
+                        pe_t = pe_bank if is_bank else (pe_tel if "Télécom" in str(sector) else pe_ind)
+                        pb_t = pb_bank if is_bank else pb_corp
+
+                        res = {}
+                        res["DDM"] = valuation_ddm(
+                            ticker, fin_data, div_hist.get(ticker, {}),
+                            nb_titres, cours_df, ke=ke_ddm, g=g_ddm
+                        )
+                        res["P/E"] = valuation_pe(ticker, fin_data, nb_titres, pe_target=pe_t)
+                        res["P/B"] = valuation_pb(ticker, fin_data, nb_titres, pb_target=pb_t)
+                        res["DCF"] = valuation_dcf(
+                            ticker, fin_data, nb_titres, cours_df,
+                            horizon=dcf_horizon, g_tv=g_tv_dcf,
+                            wacc_override=wacc_dcf if wacc_dcf > 0 else None
+                        )
+                        p_comb, prices_ok = combined_price(res, model_weights)
+                        results_all[ticker] = {
+                            "modeles": res,
+                            "prix_cible": p_comb,
+                            "prix_modeles": prices_ok,
+                        }
+
+                st.session_state.val_results = results_all
+                st.success(f"✅ Valorisation terminée — {len(results_all)} titres")
+
+        # ── Affichage des résultats ────────────────────────────────
+        if "val_results" in st.session_state and st.session_state.val_results:
+            val = st.session_state.val_results
+            cours_df = st.session_state.data.get("cours", pd.DataFrame()) if st.session_state.data else pd.DataFrame()
+
+            # Table synthèse
+            st.markdown("---")
+            st.markdown("**📋 Tableau de synthèse — Prix cibles et potentiels**")
+
+            rows = []
+            for ticker, v in val.items():
+                p_comb = v.get("prix_cible")
+                if not p_comb:
+                    continue
+
+                # Cours actuel
+                cours_act = np.nan
+                if not cours_df.empty and ticker in cours_df.columns:
+                    s = cours_df[ticker].dropna()
+                    if not s.empty:
+                        cours_act = float(s.iloc[-1])
+
+                potentiel = (p_comb - cours_act) / cours_act * 100 if not np.isnan(cours_act) else np.nan
+                signal = ("🟢 Achat" if potentiel > 10 else
+                          "🔴 Vente" if potentiel < -10 else
+                          "🟡 Neutre") if not np.isnan(potentiel) else "—"
+
+                pm = v.get("prix_modeles", {})
+                # Secteur
+                fd = fin_data.get(ticker, {})
+                yr_last = max(fd.keys()) if fd else "—"
+                sect = fd.get(yr_last, {}).get("secteur", "—") if fd else "—"
+
+                rows.append({
+                    "Ticker":      ticker,
+                    "Secteur":     sect,
+                    "Cours actuel": f"{cours_act:,.0f}" if not np.isnan(cours_act) else "—",
+                    "DDM":          f"{pm.get('DDM',0):,.0f}"  if "DDM" in pm  else "—",
+                    "P/E":          f"{pm.get('P/E',0):,.0f}"  if "P/E" in pm  else "—",
+                    "P/B":          f"{pm.get('P/B',0):,.0f}"  if "P/B" in pm  else "—",
+                    "DCF":          f"{pm.get('DCF',0):,.0f}"  if "DCF" in pm  else "—",
+                    "Prix cible":   f"{p_comb:,.0f}",
+                    "Potentiel":    f"{potentiel:+.1f}%" if not np.isnan(potentiel) else "—",
+                    "Signal":       signal,
+                    "_pot_num":     potentiel if not np.isnan(potentiel) else 0,
+                })
+
+            if not rows:
+                st.warning("Aucun résultat disponible — vérifiez que les nb_titres sont chargés.")
+            else:
+                df_res = pd.DataFrame(rows).sort_values("_pot_num", ascending=False)
+                display_cols = ["Ticker","Secteur","Cours actuel","DDM","P/E","P/B","DCF","Prix cible","Potentiel","Signal"]
+                st.dataframe(df_res[display_cols], width="stretch", hide_index=True)
+
+                # Graphique potentiels
+                st.markdown("**Potentiels de hausse / baisse par titre**")
+                df_chart = df_res[df_res["_pot_num"] != 0].copy()
+                colors_bar = ["#10b981" if v > 0 else "#ef4444" for v in df_chart["_pot_num"]]
+                fig_pot = go.Figure(go.Bar(
+                    x=df_chart["Ticker"],
+                    y=df_chart["_pot_num"],
+                    marker=dict(color=colors_bar, line=dict(width=0)),
+                    text=[f"{v:+.1f}%" for v in df_chart["_pot_num"]],
+                    textposition="outside",
+                    textfont=dict(size=9, color="#94a3b8"),
+                ))
+                fig_pot.add_hline(y=0, line_width=1, line_color="#475569")
+                fig_pot.add_hline(y=10,  line_dash="dash", line_color="#10b981", line_width=0.8)
+                fig_pot.add_hline(y=-10, line_dash="dash", line_color="#ef4444", line_width=0.8)
+                fig_pot.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#94a3b8", family="JetBrains Mono"), height=380,
+                    margin=dict(l=10, r=10, t=20, b=50),
+                    xaxis=dict(gridcolor="#1e2d45", tickangle=-45),
+                    yaxis=dict(gridcolor="#1e2d45", ticksuffix="%", title="Potentiel (%)"),
+                )
+                st.plotly_chart(fig_pot, width="stretch")
+
+                # Détail par titre
+                st.markdown("**🔍 Détail par titre — DCF**")
+                ticker_detail = st.selectbox("Choisir un titre", [r["Ticker"] for r in rows])
+                if ticker_detail and ticker_detail in val:
+                    dcf_res = val[ticker_detail]["modeles"].get("DCF")
+                    if dcf_res and dcf_res.get("fcf_table"):
+                        st.markdown(f"**{ticker_detail} — Projection DCF** · WACC={dcf_res['wacc']:.2%} · g_FCF={dcf_res['g_fcf']:.2%} · g_TV={dcf_res['g_tv']:.2%}")
+                        dcf_df = pd.DataFrame(dcf_res["fcf_table"])
+                        dcf_df.columns = ["Année","FCF projeté (M FCFA)","PV (M FCFA)"]
+                        dcf_df = dcf_df.round(0)
+
+                        col_dcf1, col_dcf2 = st.columns(2)
+                        with col_dcf1:
+                            st.dataframe(dcf_df, width="stretch", hide_index=True)
+                        with col_dcf2:
+                            kd1, kd2, kd3 = st.columns(3)
+                            kd1.metric("PV FCF (M FCFA)", f"{dcf_res['pv_fcf_m']:,.0f}")
+                            kd2.metric("PV TV (M FCFA)", f"{dcf_res['pv_tv_m']:,.0f}")
+                            kd3.metric("EV (M FCFA)", f"{dcf_res['ev_m']:,.0f}")
+                            st.metric("Prix cible DCF (FCFA)", f"{dcf_res['prix_cible']:,.0f}")
+                    else:
+                        st.info("DCF non disponible pour ce titre.")
+
+                # Export
+                buf = io.BytesIO()
+                df_res[display_cols].to_excel(buf, index=False)
+                st.download_button("⬇️ Exporter valorisations (Excel)", buf.getvalue(),
+                                   "valorisation_BRVM.xlsx",
+                                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+# ══ DONNÉES ════════════════════════════════════════════════════
+with t9:
     st.markdown("<span class='pill'>Sources</span><p class='sh'>Aperçu des données chargées</p>", unsafe_allow_html=True)
     c1,c2,c3 = st.columns(3)
     c1.metric("Observations cours", len(data["cours"]))
