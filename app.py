@@ -2426,35 +2426,27 @@ with t8:
     if _has_fin_data:
         st.markdown("---")
 
-        # ── Paramètres des modèles ─────────────────────────────────
-        st.markdown("**⚙️ Paramètres des modèles**")
-        par1, par2, par3, par4 = st.columns(4)
-        with par1:
-            st.markdown("**DDM**")
-            ke_ddm = st.number_input("Taux actualisation ke (%)", 6.0, 20.0, 12.0, 0.5, key="ddm_ke") / 100
-            g_ddm  = st.number_input("Croissance dividendes g (%)", 0.0, 15.0, 5.0, 0.5, key="ddm_g") / 100
-        with par2:
-            st.markdown("**P/E relatif**")
-            pe_bank = st.number_input("P/E cible Banques", 4.0, 20.0, 8.0, 0.5, key="pe_bank")
-            pe_ind  = st.number_input("P/E cible Industrie/Autres", 4.0, 30.0, 11.0, 0.5, key="pe_ind")
-            pe_tel  = st.number_input("P/E cible Télécom", 4.0, 30.0, 15.0, 0.5, key="pe_tel")
-        with par3:
-            st.markdown("**P/B**")
-            pb_bank = st.number_input("P/B cible Banques", 0.5, 5.0, 1.2, 0.1, key="pb_bank")
-            pb_corp = st.number_input("P/B cible Autres", 0.5, 5.0, 1.5, 0.1, key="pb_corp")
-        with par4:
-            st.markdown("**DCF**")
-            dcf_horizon = st.slider("Horizon projection (ans)", 3, 10, 5, 1, key="dcf_h")
-            g_tv_dcf    = st.number_input("Croissance terminale (%)", 1.0, 8.0, 4.0, 0.5, key="dcf_gtv") / 100
-            wacc_dcf    = st.number_input("WACC manuel (0 = auto) (%)", 0.0, 25.0, 0.0, 0.5, key="dcf_wacc") / 100
+        # ── Info calibrage automatique ─────────────────────────────
+        st.markdown("""<div class='fbox'>
+        🤖 <b>Calibrage 100% automatique</b> — Zéro saisie manuelle<br>
+        β calculé depuis cours historiques · ke/WACC via CAPM · kd depuis états financiers<br>
+        P/E et P/B calibrés sur les multiples historiques observés du titre · g_FCF = CAGR Rex/RN<br>
+        Seul paramètre ajustable : <b>horizon DCF</b> et <b>poids des modèles</b>
+        </div>""", unsafe_allow_html=True)
 
-        # Poids des modèles dans le prix combiné
-        st.markdown("**⚖️ Poids des modèles dans le prix cible combiné**")
-        wc1, wc2, wc3, wc4 = st.columns(4)
-        w_ddm = wc1.number_input("w DDM",  0.0, 1.0, 0.20, 0.05, key="w_ddm")
-        w_pe  = wc2.number_input("w P/E",  0.0, 1.0, 0.30, 0.05, key="w_pe")
-        w_pb  = wc3.number_input("w P/B",  0.0, 1.0, 0.20, 0.05, key="w_pb")
-        w_dcf = wc4.number_input("w DCF",  0.0, 1.0, 0.30, 0.05, key="w_dcf")
+        ac1, ac2 = st.columns(2)
+        with ac1:
+            dcf_horizon = st.slider(
+                "Horizon DCF (ans)", 3, 10, 5, 1, key="dcf_h",
+                help="Nombre d'années de projection explicite. La valeur terminale couvre l'infini."
+            )
+        with ac2:
+            st.markdown("**Poids des modèles (renormalisés si modèle absent)**")
+            wp1, wp2, wp3, wp4 = st.columns(4)
+            w_ddm = wp1.number_input("DDM",  0.0,1.0,0.20,0.05,key="w_ddm")
+            w_pe  = wp2.number_input("P/E",  0.0,1.0,0.30,0.05,key="w_pe")
+            w_pb  = wp3.number_input("P/B",  0.0,1.0,0.20,0.05,key="w_pb")
+            w_dcf = wp4.number_input("DCF",  0.0,1.0,0.30,0.05,key="w_dcf")
         model_weights = {"DDM": w_ddm, "P/E": w_pe, "P/B": w_pb, "DCF": w_dcf}
 
         st.markdown("---")
@@ -2462,10 +2454,9 @@ with t8:
         # ── Sélection des titres ────────────────────────────────────
         av_tickers = sorted(fin_data.keys())
         if st.session_state.data:
-            # Priorité aux titres communs avec les données de cours
             cours_tickers = st.session_state.data.get("tickers", [])
-            common = [t for t in av_tickers if t in cours_tickers]
-            only_fs = [t for t in av_tickers if t not in cours_tickers]
+            common   = [t for t in av_tickers if t in cours_tickers]
+            only_fs  = [t for t in av_tickers if t not in cours_tickers]
         else:
             common, only_fs = av_tickers, []
 
@@ -2480,53 +2471,61 @@ with t8:
             if not sel_tickers:
                 st.warning("Sélectionnez au moins un titre.")
             else:
-                # Récupérer nb_titres et dividendes du fichier SMF si disponible
-                nb_titres  = st.session_state.data.get("nb_titres", {}) if st.session_state.data else {}
+                nb_titres  = st.session_state.data.get("nb_titres",  {}) if st.session_state.data else {}
                 dividendes = st.session_state.data.get("dividendes", pd.DataFrame()) if st.session_state.data else pd.DataFrame()
-                cours_df   = st.session_state.data.get("cours", pd.DataFrame()) if st.session_state.data else pd.DataFrame()
+                cours_df   = st.session_state.data.get("cours",      pd.DataFrame()) if st.session_state.data else pd.DataFrame()
+                moy_cours  = st.session_state.data.get("moyenne_cours", pd.DataFrame()) if st.session_state.data else pd.DataFrame()
 
-                # Convertir historique dividendes → {ticker: {year: div}}
+                # Dividendes → {ticker: {year: montant}}
                 div_hist = {}
                 if not dividendes.empty and "Date" in dividendes.columns:
                     for _, row in dividendes.iterrows():
-                        yr = int(row["Date"])
+                        yr_d = int(row["Date"])
                         for t in sel_tickers:
                             if t in dividendes.columns:
                                 v = row.get(t)
                                 if pd.notna(v) and v > 0:
-                                    div_hist.setdefault(t, {})[yr] = float(v)
+                                    div_hist.setdefault(t, {})[yr_d] = float(v)
 
                 results_all = {}
-                with st.spinner(f"Valorisation de {len(sel_tickers)} titres..."):
+                params_all  = {}
+                with st.spinner(f"Calibrage auto + valorisation de {len(sel_tickers)} titres..."):
                     for ticker in sel_tickers:
-                        is_bank = fin_data.get(ticker, {}).get(
-                            max(fin_data[ticker].keys()) if fin_data.get(ticker) else 2024, {}
-                        ).get("type") == "banque"
-
-                        # P/E cible selon secteur
-                        sector = fin_data.get(ticker, {}).get(
-                            max(fin_data[ticker].keys()) if fin_data.get(ticker) else 2024, {}
-                        ).get("secteur", "")
-                        pe_t = pe_bank if is_bank else (pe_tel if "Télécom" in str(sector) else pe_ind)
-                        pb_t = pb_bank if is_bank else pb_corp
+                        # ── Calibrage auto de tous les paramètres ──────
+                        try:
+                            from valuation_models import calibrate_params
+                            p = calibrate_params(
+                                ticker, fin_data, nb_titres,
+                                cours_df, moy_cours,
+                                div_history=div_hist.get(ticker)
+                            )
+                        except Exception:
+                            p = None
+                        params_all[ticker] = p
 
                         res = {}
                         res["DDM"] = valuation_ddm(
                             ticker, fin_data, div_hist.get(ticker, {}),
-                            nb_titres, cours_df, ke=ke_ddm, g=g_ddm
+                            nb_titres, cours_df, params=p
                         )
-                        res["P/E"] = valuation_pe(ticker, fin_data, nb_titres, pe_target=pe_t)
-                        res["P/B"] = valuation_pb(ticker, fin_data, nb_titres, pb_target=pb_t)
+                        res["P/E"] = valuation_pe(
+                            ticker, fin_data, nb_titres,
+                            cours_df, moy_cours, params=p
+                        )
+                        res["P/B"] = valuation_pb(
+                            ticker, fin_data, nb_titres,
+                            cours_df, moy_cours, params=p
+                        )
                         res["DCF"] = valuation_dcf(
-                            ticker, fin_data, nb_titres, cours_df,
-                            horizon=dcf_horizon, g_tv=g_tv_dcf,
-                            wacc_override=wacc_dcf if wacc_dcf > 0 else None
+                            ticker, fin_data, nb_titres,
+                            cours_df, horizon=dcf_horizon, params=p
                         )
                         p_comb, prices_ok = combined_price(res, model_weights)
                         results_all[ticker] = {
-                            "modeles": res,
-                            "prix_cible": p_comb,
+                            "modeles":      res,
+                            "prix_cible":   p_comb,
                             "prix_modeles": prices_ok,
+                            "params":       p,
                         }
 
                 st.session_state.val_results = results_all
@@ -2534,10 +2533,9 @@ with t8:
 
         # ── Affichage des résultats ────────────────────────────────
         if "val_results" in st.session_state and st.session_state.val_results:
-            val = st.session_state.val_results
+            val      = st.session_state.val_results
             cours_df = st.session_state.data.get("cours", pd.DataFrame()) if st.session_state.data else pd.DataFrame()
 
-            # Table synthèse
             st.markdown("---")
             st.markdown("**📋 Tableau de synthèse — Prix cibles et potentiels**")
 
@@ -2609,6 +2607,33 @@ with t8:
                     yaxis=dict(gridcolor="#1e2d45", ticksuffix="%", title="Potentiel (%)"),
                 )
                 st.plotly_chart(fig_pot, width="stretch")
+
+                # Tableau transparence des paramètres calibrés
+                st.markdown("---")
+                st.markdown("**🔬 Transparence — Paramètres calibrés automatiquement**")
+                st.caption("Tous dérivés des données réelles · aucune saisie manuelle")
+                param_rows = []
+                for ticker_p, v_p in val.items():
+                    p = v_p.get("params")
+                    if not p:
+                        continue
+                    param_rows.append({
+                        "Ticker":    ticker_p,
+                        "Type":      "Banque" if p.get("is_bank") else "Société",
+                        "β":         f"{p.get('beta',1):.2f}",
+                        "ke":        f"{p.get('ke',0)*100:.1f}%",
+                        "kd":        f"{p.get('kd',0)*100:.1f}%",
+                        "WACC":      f"{p.get('wacc',0)*100:.1f}%",
+                        "g_FCF":     f"{p.get('g_fcf',0)*100:.1f}%",
+                        "g_div":     f"{p.get('g_div',0)*100:.1f}%",
+                        "P/E cible": f"{p.get('pe_target',0):.1f}x",
+                        "P/E méth.": p.get("pe_method","—"),
+                        "P/B cible": f"{p.get('pb_target',0):.2f}x",
+                        "Taux IS":   f"{p.get('tax_rate',0)*100:.1f}%",
+                        "Année":     str(p.get("annee_ref","—")),
+                    })
+                if param_rows:
+                    st.dataframe(pd.DataFrame(param_rows), width="stretch", hide_index=True)
 
                 # Détail par titre
                 st.markdown("**🔍 Détail par titre — DCF**")
