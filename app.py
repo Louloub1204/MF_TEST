@@ -670,7 +670,153 @@ def compute_multifactor(factor_results, betas):
         mf = mf.add(df[sc[0]] * betas.get(fname, 0), fill_value=0)
     return mf.sort_values(ascending=False)
 
-def compute_portfolio_weights(mf, included=None):
+def optimize_betas_ols(data, train_start, train_end,
+                       target_start, target_end, year):
+    """
+    Approche 1 — Régression OLS.
+    β_i = coefficients de régression linéaire qui minimisent :
+    ||Rendement_T - Σ β_i * F_i(T)||²
+    Les β obtenus représentent la contribution marginale de chaque facteur
+    pour expliquer les rendements historiques.
+    """
+    FACTOR_NAMES = ["Value","Momentum","Volatilité","Dividende","Liquidité"]
+    X, y, tickers = build_ml_dataset(
+        data, train_start, train_end, target_start, target_end, year
+    )
+    if X is None or len(X) < 6:
+        return None, None
+
+    from numpy.linalg import lstsq
+    X_arr = X.values
+    y_arr = y.values
+
+    # OLS : β = (XᵀX)⁻¹ Xᵀy
+    coeffs, _, _, _ = lstsq(X_arr, y_arr, rcond=None)
+    coeffs_s = pd.Series(coeffs, index=FACTOR_NAMES)
+
+    # Normalisation : on prend les valeurs absolues et on renormalise
+    # (un coefficient négatif = facteur inversement lié → on garde l'info mais β ≥ 0)
+    abs_coeffs = coeffs_s.abs().clip(lower=0)
+    total = abs_coeffs.sum()
+    if total <= 0:
+        return None, None
+    betas = (abs_coeffs / total).to_dict()
+
+    # R² manuel
+    y_pred = X_arr @ coeffs
+    ss_res = ((y_arr - y_pred)**2).sum()
+    ss_tot = ((y_arr - y_arr.mean())**2).sum()
+    r2 = 1 - ss_res/ss_tot if ss_tot > 0 else 0
+
+    return betas, {
+        "coefficients": coeffs_s.to_dict(),
+        "r2": float(r2),
+        "n_obs": len(y),
+    }
+
+
+def optimize_betas_walkforward(data, train_start, train_end,
+                                target_start, target_end, year,
+                                n_windows=4):
+    """
+    Approche 2 — Walk-forward (fenêtres glissantes + maximisation Sharpe).
+    Divise [train_start → train_end] en n_windows sous-périodes.
+    Pour chaque sous-période, calcule les scores factoriels et les rendements
+    de la période suivante. Retourne les β moyens qui ont donné le meilleur
+    Sharpe ratio cumulé.
+    """
+    FACTOR_NAMES = ["Value","Momentum","Volatilité","Dividende","Liquidité"]
+
+    ts = pd.to_datetime(train_start)
+    te = pd.to_datetime(train_end)
+    tgs = pd.to_datetime(target_start)
+    tge = pd.to_datetime(target_end)
+
+    total_days = (tge - ts).days
+    if total_days < 365 or n_windows < 2:
+        return None, None
+
+    # Découper en n_windows fenêtres glissantes
+    window_days = total_days // (n_windows + 1)
+    all_betas = []
+    window_results = []
+
+    for i in range(n_windows):
+        w_train_start = ts + pd.Timedelta(days=i * window_days)
+        w_train_end   = w_train_start + pd.Timedelta(days=window_days)
+        w_target_start= w_train_end
+        w_target_end  = w_target_start + pd.Timedelta(days=window_days)
+
+        if w_target_end > tge:
+            break
+
+        X, y, _ = build_ml_dataset(
+            data,
+            w_train_start.date(), w_train_end.date(),
+            w_target_start.date(), w_target_end.date(),
+            year
+        )
+        if X is None or len(X) < 5:
+            continue
+
+        # Sharpe simple de chaque facteur sur la fenêtre
+        sharpes = {}
+        for f in FACTOR_NAMES:
+            if f not in X.columns:
+                sharpes[f] = 0
+                continue
+            scores = X[f]
+            # Rendement du facteur = corrélation score × rendement réalisé
+            corr = scores.corr(y)
+            sharpes[f] = max(float(corr), 0)
+
+        total_sh = sum(sharpes.values())
+        if total_sh > 0:
+            betas_w = {f: v/total_sh for f, v in sharpes.items()}
+            all_betas.append(betas_w)
+            window_results.append({
+                "fenetre": i+1,
+                "train": f"{w_train_start.date()} → {w_train_end.date()}",
+                "target": f"{w_target_start.date()} → {w_target_end.date()}",
+                "sharpes": sharpes,
+            })
+
+    if not all_betas:
+        return None, None
+
+    # Moyenne des β sur toutes les fenêtres
+    avg_betas = {}
+    for f in FACTOR_NAMES:
+        avg_betas[f] = float(np.mean([b.get(f, 0) for b in all_betas]))
+
+    total = sum(avg_betas.values())
+    if total > 0:
+        avg_betas = {f: v/total for f, v in avg_betas.items()}
+
+    return avg_betas, {"n_windows": len(all_betas), "detail": window_results}
+
+
+def vote_majority_betas(results_dict):
+    """
+    Vote majoritaire par facteur entre les 3 approches.
+    Pour chaque facteur : β_final = médiane des β des approches disponibles.
+    Puis renormalisation pour que Σβ = 1.
+    """
+    FACTOR_NAMES = ["Value","Momentum","Volatilité","Dividende","Liquidité"]
+    available = {name: betas for name, betas in results_dict.items()
+                 if betas is not None}
+    if not available:
+        return {f: 1/5 for f in FACTOR_NAMES}
+
+    median_betas = {}
+    for f in FACTOR_NAMES:
+        vals = [b.get(f, 0) for b in available.values()]
+        median_betas[f] = float(np.median(vals))
+
+    total = sum(median_betas.values())
+    if total > 0:
+        median_betas = {f: v/total for f, v in median_betas.items()}
+    return median_betas
     """
     α(T,t) = (n − r(T,t) + 1) / (n·(n+1)/2)
     Si included est fourni, seuls ces titres entrent dans le portefeuille.
@@ -928,6 +1074,12 @@ for k in ["data","factor_results","mf_scores","pw"]:
     if k not in st.session_state:
         st.session_state[k] = {} if k == "factor_results" else None
 
+# β sliders — initialisés inconditionnellement au démarrage
+for k, default in [("sv_val",0.20),("sv_mom",0.20),("sv_vol",0.20),
+                   ("sv_div",0.20),("sv_liq",0.20)]:
+    if k not in st.session_state:
+        st.session_state[k] = default
+
 # Valuation DB path
 VALUATION_DB_PATH = "financial_db.json"
 if "fin_data" not in st.session_state:
@@ -993,12 +1145,6 @@ with st.sidebar:
         st.markdown("---")
         st.markdown("**⚖️ Poids des facteurs β_i**")
         st.caption("Calibrez chaque facteur · Σβ doit = 1.0")
-
-        # Initialise les valeurs de stockage si absentes
-        for k, default in [("sv_val",0.20),("sv_mom",0.20),("sv_vol",0.20),
-                            ("sv_div",0.20),("sv_liq",0.20)]:
-            if k not in st.session_state:
-                st.session_state[k] = default
 
         b_val = st.slider("💰 Value",      0.0, 1.0, st.session_state.sv_val, 0.01, key="b_val")
         b_mom = st.slider("🚀 Momentum",   0.0, 1.0, st.session_state.sv_mom, 0.01, key="b_mom")
@@ -1605,81 +1751,70 @@ with t1:
 
 # ══ MOMENTUM ═══════════════════════════════════════════════════
 with t2:
-    st.markdown("<span class='pill'>Étape 1 · Facteur Momentum</span><p class='sh'>Dynamique des cours — plages libres par horizon</p>", unsafe_allow_html=True)
+    st.markdown("<span class='pill'>Étape 1 · Facteur Momentum</span><p class='sh'>Dynamique des cours — 6 horizons</p>", unsafe_allow_html=True)
     st.markdown("""<div class='fbox'>
     F_mom(t,T) = Σ w_h · rdt_moyen_h(t,T) / max_{E_t}(rdt_moyen_h)<br>
-    Chaque horizon a sa propre plage de dates · désactivez un horizon en mettant son poids à 0
+    Une seule plage globale · les 6 horizons calculent leur rendement moyen sur cette fenêtre
     </div>""", unsafe_allow_html=True)
 
     c_min = data["cours"].index.min().date()
     c_max = data["cours"].index.max().date()
 
-    # Plages par défaut cohérentes avec la note technique
-    HORIZON_DEFAULTS = {
-        "Journalier":   (c_max - pd.Timedelta(days=1),   c_max),
-        "Hebdo":        (c_max - pd.Timedelta(days=7),   c_max),
-        "Mensuel":      (c_max - pd.Timedelta(days=30),  c_max),
-        "Trimestriel":  (c_max - pd.Timedelta(days=91),  c_max),
-        "Semestriel":   (c_max - pd.Timedelta(days=182), c_max),
-        "Annuel":       (c_max - pd.Timedelta(days=365), c_max),
-    }
+    # ── Plage globale unique ──────────────────────────────────
+    st.markdown("**📅 Plage de dates globale**")
+    st.caption("Tous les horizons (Journalier, Hebdo, Mensuel...) calculent leur rendement moyen sur cette fenêtre.")
+    mg1, mg2, mg3 = st.columns([1, 1, 1])
+    with mg1:
+        mom_global_start = st.date_input(
+            "Date début", key="mom_global_start",
+            value=max(c_min, min(c_max, (pd.Timestamp(c_max) - pd.Timedelta(days=365)).date())),
+            min_value=c_min, max_value=c_max
+        )
+    with mg2:
+        mom_global_end = st.date_input(
+            "Date fin", key="mom_global_end",
+            value=c_max, min_value=c_min, max_value=c_max
+        )
+    with mg3:
+        if mom_global_start < mom_global_end:
+            n_cal = (mom_global_end - mom_global_start).days
+            # Nombre de jours de trading sur la période
+            cours_tmp = data["cours"]
+            n_trd = ((cours_tmp.index >= pd.to_datetime(mom_global_start)) &
+                     (cours_tmp.index <= pd.to_datetime(mom_global_end))).sum()
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.success(f"✅ **{n_cal}** jours cal. · **{n_trd}** jours trading")
+        else:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.error("⚠️ Date début ≥ Date fin")
 
-    HORIZON_LABELS = list(HORIZON_DEFAULTS.keys())
-    HORIZON_ICONS  = ["📅","📅","📅","📅","📅","📅"]
-
-    st.markdown("**📅 Plages de dates par horizon**")
-    st.caption("Définissez librement la période d'analyse pour chaque horizon · ex: Annuel sur 5 ans = du 20/05/2021 au 20/05/2026")
-
-    horizon_ranges = {}
+    # ── Pondérations par horizon ──────────────────────────────
+    st.markdown("**⚖️ Poids par horizon**")
+    HORIZON_LABELS = ["Journalier","Hebdo","Mensuel","Trimestriel","Semestriel","Annuel"]
+    wh_cols = st.columns(6)
     horizon_weights = {}
-
-    for h in HORIZON_LABELS:
-        with st.expander(f"**{h}**", expanded=(h in ["Mensuel","Annuel"])):
-            hc1, hc2, hc3 = st.columns([1, 1, 1])
-            d_start_def = max(c_min, min(c_max, HORIZON_DEFAULTS[h][0].date()
-                              if hasattr(HORIZON_DEFAULTS[h][0], 'date')
-                              else HORIZON_DEFAULTS[h][0]))
-            d_end_def   = max(c_min, min(c_max, HORIZON_DEFAULTS[h][1].date()
-                              if hasattr(HORIZON_DEFAULTS[h][1], 'date')
-                              else HORIZON_DEFAULTS[h][1]))
-            with hc1:
-                d_start = st.date_input(f"Début", value=d_start_def,
-                                         min_value=c_min, max_value=c_max,
-                                         key=f"mom_start_{h}")
-            with hc2:
-                d_end = st.date_input(f"Fin", value=d_end_def,
-                                       min_value=c_min, max_value=c_max,
-                                       key=f"mom_end_{h}")
-            with hc3:
-                w_h = st.number_input(f"Poids w_{h[:3]}", 0.0, 1.0,
-                                       round(1/6, 4), 0.01,
-                                       key=f"mom_w_{h}")
-            if d_start < d_end:
-                horizon_ranges[h]  = (d_start, d_end)
-                horizon_weights[h] = w_h
-                nb_jours = (d_end - d_start).days
-                st.caption(f"↳ {nb_jours} jours calendaires · "
-                           f"{(d_end - d_start).days // 5 * 5 // 5} semaines environ")
-            else:
-                st.warning(f"⚠️ Date début ≥ Date fin — horizon ignoré")
+    for i, h in enumerate(HORIZON_LABELS):
+        w = wh_cols[i].number_input(h, 0.0, 1.0, round(1/6, 4), 0.01, key=f"mom_w_{h}")
+        horizon_weights[h] = w
 
     w_mom_sum = round(sum(horizon_weights.values()), 4)
-    if horizon_weights:
-        if abs(w_mom_sum - 1.0) > 0.01:
-            st.warning(f"⚠️ Σ poids actifs = {w_mom_sum:.2f} ≠ 1.0 — les poids seront renormalisés automatiquement")
-        else:
-            st.success(f"✅ Σ poids = {w_mom_sum:.2f} · {len(horizon_ranges)} horizons actifs")
+    if abs(w_mom_sum - 1.0) > 0.01:
+        st.warning(f"⚠️ Σ poids = {w_mom_sum:.2f} ≠ 1.0 — renormalisés automatiquement")
+    else:
+        st.success(f"✅ Σ poids = {w_mom_sum:.2f}")
 
     if st.button("⚙️ Calculer le Momentum", type="primary"):
-        if not horizon_ranges:
-            st.error("Aucun horizon valide configuré.")
+        if mom_global_start >= mom_global_end:
+            st.error("Plage de dates invalide.")
         else:
+            # La même plage pour tous les horizons
+            horizon_ranges = {h: (mom_global_start, mom_global_end) for h in HORIZON_LABELS}
             res = compute_momentum_factor(data, horizon_ranges, horizon_weights)
             if res is not None:
                 fr["Momentum"] = res
-                st.success(f"✅ {len(res)} titres scorés · {len(horizon_ranges)} horizons")
+                st.success(f"✅ {len(res)} titres scorés · plage {mom_global_start} → {mom_global_end}")
             else:
-                st.error("Données insuffisantes pour les périodes sélectionnées.")
+                st.error("Données insuffisantes pour la période sélectionnée.")
 
     if "Momentum" in fr:
         res = fr["Momentum"]
@@ -1981,59 +2116,119 @@ with t6:
                     apply_auto = st.toggle("Appliquer β ML à la sidebar automatiquement",
                                            value=True, key="ml_auto")
 
-                if st.button("🤖 Optimiser les β par ML", type="primary"):
+                if st.button("🤖 Lancer les 3 approches + Vote majoritaire", type="primary"):
                     if ml_ts >= ml_te:
                         st.error("Fenêtre features invalide (début ≥ fin).")
                     elif ml_tgs >= ml_tge:
                         st.error("Fenêtre cible invalide (début ≥ fin).")
                     else:
-                        with st.spinner("Recalcul des scores + Random Forest + Gradient Boosting..."):
-                            betas_opt, ml_res, ml_ds = optimize_betas_ml(
-                                data=data,
-                                train_start=ml_ts,  train_end=ml_te,
-                                target_start=ml_tgs, target_end=ml_tge,
-                                year=ml_year,
-                                n_estimators=n_trees
-                            )
-                        if betas_opt is None:
-                            st.error("Données insuffisantes. Vérifiez que la fenêtre features "
-                                     "contient des cours et que les fondamentaux existent "
-                                     "pour l'année sélectionnée.")
-                        else:
-                            st.session_state.ml_betas   = betas_opt
-                            st.session_state.ml_results = ml_res
-                            st.session_state.ml_dataset = ml_ds
-                            if apply_auto:
-                                km = {"Value":"sv_val","Momentum":"sv_mom",
-                                      "Volatilité":"sv_vol","Dividende":"sv_div","Liquidité":"sv_liq"}
-                                for f, b in betas_opt.items():
-                                    if f in km:
-                                        st.session_state[km[f]] = round(float(b), 4)
-                                st.success(
-                                    f"✅ β optimisés et appliqués à la sidebar\n\n"
-                                    f"· Features X : {ml_ts} → {ml_te}  "
-                                    f"(fondamentaux {ml_year})\n\n"
-                                    f"· Cible Y    : {ml_tgs} → {ml_tge}\n\n"
-                                    f"· Titres dans le dataset : {len(ml_ds['tickers'])}"
-                                )
-                                st.rerun()
-                            else:
-                                st.success(
-                                    f"✅ β optimisés · {len(ml_ds['tickers'])} titres · "
-                                    f"Cliquez 📥 ci-dessous pour les appliquer"
-                                )
+                        results_3 = {}
+                        infos_3   = {}
+                        with st.spinner("Approche 1/3 — Régression OLS..."):
+                            b1, i1 = optimize_betas_ols(
+                                data, ml_ts, ml_te, ml_tgs, ml_tge, ml_year)
+                            results_3["① OLS"] = b1
+                            infos_3["① OLS"]   = i1
 
-                # ── Résultats ML ───────────────────────────────────────
-                if "ml_results" in st.session_state and st.session_state.ml_results:
-                    ml_res = st.session_state.ml_results
-                    betas_opt = st.session_state.ml_betas
-                    ml_ds     = st.session_state.ml_dataset
+                        with st.spinner("Approche 2/3 — Walk-forward Sharpe..."):
+                            b2, i2 = optimize_betas_walkforward(
+                                data, ml_ts, ml_te, ml_tgs, ml_tge, ml_year)
+                            results_3["② Walk-forward"] = b2
+                            infos_3["② Walk-forward"]   = i2
+
+                        with st.spinner("Approche 3/3 — ML (Random Forest + Gradient Boosting)..."):
+                            b3, ml_res, ml_ds = optimize_betas_ml(
+                                data=data,
+                                train_start=ml_ts, train_end=ml_te,
+                                target_start=ml_tgs, target_end=ml_tge,
+                                year=ml_year, n_estimators=n_trees
+                            )
+                            results_3["③ ML (RF+GB)"] = b3
+
+                        # Vote majoritaire = médiane par facteur
+                        betas_opt = vote_majority_betas(results_3)
+                        n_ok = sum(1 for b in results_3.values() if b is not None)
+
+                        st.session_state.ml_betas     = betas_opt
+                        st.session_state.ml_all_betas = results_3
+                        st.session_state.ml_results   = ml_res
+                        st.session_state.ml_dataset   = ml_ds
+
+                        if apply_auto and betas_opt:
+                            km = {"Value":"sv_val","Momentum":"sv_mom",
+                                  "Volatilité":"sv_vol","Dividende":"sv_div","Liquidité":"sv_liq"}
+                            for f, b in betas_opt.items():
+                                if f in km:
+                                    st.session_state[km[f]] = round(float(b), 4)
+                            st.success(
+                                f"✅ {n_ok}/3 approches réussies · "
+                                f"Vote majoritaire appliqué à la sidebar"
+                            )
+                            st.rerun()
+                        else:
+                            st.success(f"✅ {n_ok}/3 approches réussies · Cliquez 📥 pour appliquer")
+
+                # ── Résultats 3 approches ──────────────────────────────
+                if "ml_betas" in st.session_state and st.session_state.ml_betas:
+                    betas_opt    = st.session_state.ml_betas
+                    all_betas    = st.session_state.get("ml_all_betas", {})
+                    ml_res       = st.session_state.get("ml_results")
+                    ml_ds        = st.session_state.get("ml_dataset")
 
                     st.markdown("---")
-                    st.markdown("**β_i optimaux calculés par ML**")
+                    st.markdown("**📊 Comparaison des 3 approches — β par facteur**")
 
+                    FACTORS = ["Value","Momentum","Volatilité","Dividende","Liquidité"]
+                    APPROACHES = list(all_betas.keys()) if all_betas else []
+                    A_COLORS = ["#3b82f6","#10b981","#8b5cf6"]
+
+                    # Graphique comparatif
+                    fig_3a = go.Figure()
+                    for idx, (approach, betas_a) in enumerate(all_betas.items()):
+                        if betas_a is None:
+                            continue
+                        fig_3a.add_trace(go.Bar(
+                            name=approach,
+                            x=[f"{ICONS.get(f,'')} {f}" for f in FACTORS],
+                            y=[betas_a.get(f, 0) for f in FACTORS],
+                            marker_color=A_COLORS[idx % len(A_COLORS)],
+                            opacity=0.8,
+                        ))
+                    # Vote majoritaire en ligne
+                    fig_3a.add_trace(go.Scatter(
+                        name="🗳️ Vote majoritaire",
+                        x=[f"{ICONS.get(f,'')} {f}" for f in FACTORS],
+                        y=[betas_opt.get(f, 0) for f in FACTORS],
+                        mode="lines+markers",
+                        line=dict(color="#f59e0b", width=2.5, dash="dash"),
+                        marker=dict(size=10, symbol="diamond"),
+                    ))
+                    fig_3a.update_layout(
+                        barmode="group",
+                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                        font=dict(color="#94a3b8", family="JetBrains Mono"), height=340,
+                        legend=dict(orientation="h", y=1.1, bgcolor="rgba(0,0,0,0)"),
+                        margin=dict(l=10, r=10, t=50, b=30),
+                        xaxis=dict(gridcolor="#1e2d45"),
+                        yaxis=dict(gridcolor="#1e2d45", title="β_i"),
+                    )
+                    st.plotly_chart(fig_3a, width="stretch")
+
+                    # Tableau de synthèse
+                    st.markdown("**β par facteur — Tableau de synthèse**")
+                    tbl_rows = []
+                    for f in FACTORS:
+                        row = {"Facteur": f"{ICONS.get(f,'')} {f}"}
+                        for ap, betas_a in all_betas.items():
+                            row[ap] = f"{betas_a.get(f,0):.3f}" if betas_a else "✗"
+                        row["🗳️ Vote final"] = f"**{betas_opt.get(f,0):.3f}**"
+                        tbl_rows.append(row)
+                    st.dataframe(pd.DataFrame(tbl_rows), width="stretch", hide_index=True)
+
+                    # β finaux en cards
+                    st.markdown("**β finaux (vote majoritaire) — appliqués à la sidebar**")
                     b_cols = st.columns(5)
-                    for i, fname in enumerate(["Value","Momentum","Volatilité","Dividende","Liquidité"]):
+                    for i, fname in enumerate(FACTORS):
                         bv = betas_opt.get(fname, 0)
                         with b_cols[i]:
                             st.markdown(
@@ -2044,8 +2239,7 @@ with t6:
                                 f"<div style='font-size:22px;font-weight:800;color:{CLRS[fname]};'>"
                                 f"{bv:.3f}</div>"
                                 f"<div style='font-size:10px;color:#64748b;'>{bv*100:.1f}%</div>"
-                                f"</div>",
-                                unsafe_allow_html=True
+                                f"</div>", unsafe_allow_html=True
                             )
 
                     # Graphique comparaison RF vs GB
