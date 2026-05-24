@@ -2991,6 +2991,22 @@ with t8:
                     if not s.empty:
                         cours_act = float(s.iloc[-1])
 
+                potentiel = (p_comb - cours_act) / cours_act * 100 \
+                            if not np.isnan(cours_act) and cours_act > 0 else np.nan
+                signal = ("🟢 Achat" if potentiel > 10 else
+                          "🔴 Vente" if potentiel < -10 else
+                          "🟡 Neutre") if not np.isnan(potentiel) else "—"
+
+                pm = v.get("prix_modeles", {})
+
+                # Secteur
+                sect = SECTOR_MAP.get(ticker.upper())
+                if not sect:
+                    fd = fin_data.get(ticker, {})
+                    yr_last = max(fd.keys()) if fd else None
+                    sect = fd.get(yr_last, {}).get("secteur", "—") \
+                           if fd and yr_last else "—"
+
                 pot_num = potentiel if not np.isnan(potentiel) else 0
                 charia_lbl = get_charia_label(ticker, st.session_state.charia_results) \
                              if CHARIA_AVAILABLE else "—"
