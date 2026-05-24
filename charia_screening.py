@@ -5,11 +5,23 @@ Compatibilité : ≥ 3 standards sur 4 passés
 
 Les ratios sont calculés depuis le fichier de screening (Feuil1)
 ou recalculés automatiquement depuis les états financiers chargés.
+
+Exclusions sectorielles :
+  - Banques conventionnelles : incompatibles structurellement (modèle Riba)
+  - Revenus illicites : revenus_financiers / CA > SEUIL_ILLICITE (5%)
 """
 import pandas as pd
 import numpy as np
 
 MIN_STANDARDS_PASS = 3
+SEUIL_ILLICITE     = 0.05   # 5% — seuil de tolérance AAOIFI
+
+# Tickers BRVM du secteur bancaire conventionnel — exclus automatiquement
+BANK_TICKERS = {
+    "SGBC","SIBC","NSBC","ECOC","BICC","BOAB","BOAS",
+    "BOABF","BOAM","BOAC","BOAN","CBIBF","ETI","ETIT",
+    "ORGT","SAFC","BICB","BNBC",
+}
 
 # Seuils par standard
 SEUILS = {
@@ -126,26 +138,51 @@ def screen_from_fin_data(ticker, fin_data, nb_titres, cours_moy=None):
     """
     Recalcule le screening depuis les états financiers chargés.
 
-    cap24 = moyenne des capitaux propres sur les 2 dernières années disponibles
-    cap36 = moyenne des capitaux propres sur les 3 dernières années disponibles
-    Revenus illicites : détectés si interets_charges / ca > 5%
-                        (proxy pour les activités non conformes Charia)
+    Exclusions :
+      1. Banques conventionnelles → non compatible (halal=False)
+      2. Revenus d'intérêts > 5% du CA → non compatible (Riba)
+
+    cap24 = moyenne des CP sur les 2 dernières années disponibles
+    cap36 = moyenne des CP sur les 3 dernières années disponibles
     """
     d = fin_data.get(ticker, {})
     if not d:
         return None
-    yr     = max(d.keys())
-    p      = d[yr]
-    actif  = abs(p.get("total_actif") or 0)
+
+    yr    = max(d.keys())
+    p     = d[yr]
+    actif = abs(p.get("total_actif") or 0)
     if actif == 0:
         return None
+
+    # ── 1. Exclusion banques conventionnelles ─────────────────
+    is_bank = (p.get("type") == "banque") or (ticker.upper() in BANK_TICKERS)
+    if is_bank:
+        return {
+            "compatible":    False,
+            "n_standards":   0,
+            "halal_sector":  False,
+            "excluded":      True,
+            "raison":        "Banque conventionnelle — incompatible Charia (modèle Riba)",
+            "standards":     {s: {"pass": False} for s in ["DJIM","FTSE","S&P","AAOIFI"]},
+            "annee":         yr,
+            "source":        "fin_data",
+            "ratios":        {},
+        }
 
     dette  = abs(p.get("dette_financiere") or 0)
     crean  = abs(p.get("creances_clientele") or 0)
     cash   = abs(p.get("tresorerie") or 0)
 
-    # ── Capitaux propres moyens (cap24 et cap36) ──────────────
-    # Utilise l'historique des CP disponibles dans fin_data
+    # ── 2. Détection revenus illicites (Riba sur sociétés) ────
+    ca           = abs(p.get("ca") or p.get("pnb") or 0)
+    rev_fin      = abs(p.get("revenus_financiers") or 0)
+    interets     = abs(p.get("interets_charges") or 0)
+    # Proxy : revenus financiers (intérêts reçus) / CA total
+    illicit_ratio = rev_fin / ca if ca > 0 else 0
+    halal = illicit_ratio <= SEUIL_ILLICITE
+
+    # ── 3. Capitaux propres moyens ────────────────────────────
     cp_hist = {}
     for yr_h, postes_h in d.items():
         cp_h = abs(postes_h.get("capitaux_propres") or
@@ -154,27 +191,13 @@ def screen_from_fin_data(ticker, fin_data, nb_titres, cours_moy=None):
             cp_hist[yr_h] = cp_h
 
     cp_sorted = [cp_hist[y] for y in sorted(cp_hist.keys())]
-
-    # cap24 = moyenne des 2 dernières années de CP disponibles
     cap24 = float(np.mean(cp_sorted[-2:])) if len(cp_sorted) >= 2 else \
             (cp_sorted[-1] if cp_sorted else None)
-
-    # cap36 = moyenne des 3 dernières années de CP disponibles
     cap36 = float(np.mean(cp_sorted[-3:])) if len(cp_sorted) >= 3 else \
             (float(np.mean(cp_sorted[-2:])) if len(cp_sorted) >= 2 else
              (cp_sorted[-1] if cp_sorted else None))
 
-    # ── Détection revenus illicites ───────────────────────────
-    # Proxy : si charges d'intérêts > 5% du CA → activité avec composante
-    # financière significative pouvant inclure des revenus non conformes
-    ca          = abs(p.get("ca") or p.get("pnb") or 0)
-    interets    = abs(p.get("interets_charges") or 0)
-    illicit_ratio = interets / ca if ca > 0 else 0
-    # Seuil conservateur : on ne filtre pas sur ce critère automatiquement
-    # car les états financiers ne distinguent pas les revenus illicites
-    # → on laisse halal=True sauf si le secteur est explicitement exclu
-    halal = True  # BRVM ne cote pas de sociétés alcool/tabac/jeux
-
+    # ── 4. Ratios financiers ──────────────────────────────────
     re     = _r(dette, actif)
     rc_a   = _r(crean, actif)
     rl     = _r(cash,  actif)
@@ -192,20 +215,23 @@ def screen_from_fin_data(ticker, fin_data, nb_titres, cours_moy=None):
         halal=halal
     )
     return {
-        "compatible":   n_pass >= MIN_STANDARDS_PASS,
-        "n_standards":  n_pass,
-        "halal_sector": halal,
-        "standards":    stds,
-        "annee":        yr,
-        "source":       "fin_data",
-        "cap24_source": f"moy CP {len(cp_sorted[-2:])} ans" if cap24 else "actif (fallback)",
-        "cap36_source": f"moy CP {len(cp_sorted[-3:])} ans" if cap36 else "actif (fallback)",
+        "compatible":    n_pass >= MIN_STANDARDS_PASS,
+        "n_standards":   n_pass,
+        "halal_sector":  halal,
+        "excluded":      False,
+        "illicit_ratio": round(illicit_ratio, 4),
+        "standards":     stds,
+        "annee":         yr,
+        "source":        "fin_data",
+        "cap24_source":  f"moy CP {len(cp_sorted[-2:])} ans" if cap24 else "actif (fallback)",
+        "cap36_source":  f"moy CP {min(len(cp_sorted),3)} ans" if cap36 else "actif (fallback)",
         "ratios": {
-            "RE_actif":  round(re,4)   if re   is not None else None,
-            "RC_actif":  round(rc_a,4) if rc_a is not None else None,
-            "RL_actif":  round(rl,4)   if rl   is not None else None,
+            "RE_actif":  round(re,4)     if re     is not None else None,
+            "RC_actif":  round(rc_a,4)   if rc_a   is not None else None,
+            "RL_actif":  round(rl,4)     if rl     is not None else None,
             "RE_cap24":  round(re_c24,4) if re_c24 is not None else None,
             "RE_cap36":  round(re_c36,4) if re_c36 is not None else None,
+            "Rev_fin/CA":round(illicit_ratio,4),
         },
     }
 
@@ -222,7 +248,11 @@ def get_charia_label(ticker, screening_results):
     r = screening_results.get(ticker)
     if r is None:
         return "—"
+    if r.get("excluded"):
+        return "🏦 Exclu (banque)"
     n = r.get("n_standards", 0)
+    if not r.get("halal_sector"):
+        return f"☽ Riba {n}/4"
     return f"☪️ {n}/4" if r.get("compatible") else f"✗ {n}/4"
 
 
