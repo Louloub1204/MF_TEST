@@ -615,6 +615,21 @@ def optimize_markowitz(mf_scores, universe, cours_df,
     return w_opt.sort_values(ascending=False)
 
 
+def compute_portfolio_weights(mf, included=None):
+    """
+    α(T,t) = (n − r(T,t) + 1) / (n·(n+1)/2)
+    Si included est fourni, seuls ces titres entrent dans le portefeuille.
+    """
+    if included:
+        mf = mf.reindex(included).dropna()
+    n = len(mf)
+    if n == 0:
+        return pd.Series(dtype=float)
+    ranks = mf.rank(ascending=False, method='min')
+    w = (n - ranks + 1) / (n * (n+1) / 2)
+    return w.sort_values(ascending=False)
+
+
 def run_optimization_pipeline(mf_scores, data, factor_results,
                               min_vol_pct, top_pct, max_corr,
                               use_markowitz, risk_aversion, mf_weight,
