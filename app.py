@@ -1106,7 +1106,28 @@ for k, default in [("sv_val",0.20),("sv_mom",0.20),("sv_vol",0.20),
 
 # Screening Charia
 if "charia_results" not in st.session_state:
-    st.session_state.charia_results = {}
+    # Initialise avec les exclusions fixes connues (banques + secteurs illicites)
+    # même sans chargement de fichier
+    if CHARIA_AVAILABLE:
+        from charia_screening import BANK_TICKERS, ILLICIT_SECTOR_TICKERS
+        _init_charia = {}
+        for t in BANK_TICKERS:
+            _init_charia[t] = {
+                "compatible": False, "n_standards": 0,
+                "halal_sector": False, "excluded": True,
+                "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+                "standards": {s: {"pass": False} for s in ["DJIM","FTSE","S&P","AAOIFI"]},
+            }
+        for t, raison in ILLICIT_SECTOR_TICKERS.items():
+            _init_charia[t] = {
+                "compatible": False, "n_standards": 0,
+                "halal_sector": False, "excluded": True,
+                "raison": f"Secteur illicite — {raison}",
+                "standards": {s: {"pass": False} for s in ["DJIM","FTSE","S&P","AAOIFI"]},
+            }
+        st.session_state.charia_results = _init_charia
+    else:
+        st.session_state.charia_results = {}
 
 # Valuation DB path
 VALUATION_DB_PATH = "financial_db.json"
