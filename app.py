@@ -2659,7 +2659,7 @@ with t7:
                         fig_pc = go.Figure(go.Pie(
                             labels=dpwc.index, values=dpwc.values, hole=0.45,
                             textfont=dict(size=10),
-                            marker=dict(color=["#10b981"]*len(dpwc),
+                            marker=dict(colors=["#10b981"]*len(dpwc),
                                         line=dict(color="#0b0f1a", width=2)),
                             hovertemplate="<b>%{label}</b><br>%{percent:.2%}<extra></extra>"
                         ))
