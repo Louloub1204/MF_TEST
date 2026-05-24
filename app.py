@@ -24,6 +24,15 @@ if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
 
 try:
+    from charia_screening import (parse_screening_file as parse_charia,
+                                   screen_all_from_fin_data,
+                                   get_charia_label,
+                                   get_charia_compatible_tickers)
+    CHARIA_AVAILABLE = True
+except ImportError:
+    CHARIA_AVAILABLE = False
+
+try:
     from fs_parser import (parse_financial_file, merge_financial_data,
                            save_financial_db, load_financial_db,
                            validate_and_fix_units)
@@ -1079,6 +1088,10 @@ for k, default in [("sv_val",0.20),("sv_mom",0.20),("sv_vol",0.20),
                    ("sv_div",0.20),("sv_liq",0.20)]:
     if k not in st.session_state:
         st.session_state[k] = default
+
+# Screening Charia
+if "charia_results" not in st.session_state:
+    st.session_state.charia_results = {}
 
 # Valuation DB path
 VALUATION_DB_PATH = "financial_db.json"
@@ -2596,6 +2609,102 @@ with t7:
                 "portefeuille_BRVM.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
+            # ── Portefeuille Charia ────────────────────────────────
+            if CHARIA_AVAILABLE and st.session_state.charia_results:
+                st.markdown("---")
+                st.markdown(
+                    "<span class='pill' style='background:#10b981;'>☪️</span>"
+                    "<p class='sh'>Allocation Charia Compatible</p>",
+                    unsafe_allow_html=True)
+                st.markdown("""<div class='fbox'>
+                Sous-ensemble du portefeuille filtré sur les titres ≥ 3/4 standards Charia<br>
+                DJIM · FTSE · S&amp;P · AAOIFI — poids recalculés sur cet univers restreint
+                </div>""", unsafe_allow_html=True)
+
+                charia_tickers = get_charia_compatible_tickers(
+                    st.session_state.charia_results)
+                charia_in_ptf  = [t for t in pw.index if t in charia_tickers]
+
+                ck1, ck2, ck3 = st.columns(3)
+                ck1.metric("Compatibles Charia (BRVM)", len(charia_tickers))
+                ck2.metric("Dans le portefeuille cible", len(charia_in_ptf))
+                ck3.metric("Σα Charia", f"{compute_portfolio_weights(mf, included=charia_in_ptf).sum():.4f}"
+                           if charia_in_ptf else "—")
+
+                if charia_in_ptf:
+                    pw_charia = compute_portfolio_weights(mf, included=charia_in_ptf)
+
+                    ch_l, ch_r = st.columns(2)
+                    with ch_l:
+                        st.markdown("**Répartition Charia**")
+                        dpwc = pw_charia.copy()
+                        if len(dpwc) > 12:
+                            dpwc = pd.concat([dpwc.head(12),
+                                             pd.Series({"Autres": dpwc.iloc[12:].sum()})])
+                        fig_pc = go.Figure(go.Pie(
+                            labels=dpwc.index, values=dpwc.values, hole=0.45,
+                            textfont=dict(size=10),
+                            marker=dict(color=["#10b981"]*len(dpwc),
+                                        line=dict(color="#0b0f1a", width=2)),
+                            hovertemplate="<b>%{label}</b><br>%{percent:.2%}<extra></extra>"
+                        ))
+                        fig_pc.update_layout(
+                            paper_bgcolor="rgba(0,0,0,0)", height=320,
+                            font=dict(color="#94a3b8", family="JetBrains Mono"),
+                            legend=dict(font=dict(size=9), bgcolor="rgba(0,0,0,0)"),
+                            margin=dict(l=10,r=10,t=20,b=10),
+                            annotations=[dict(text=f"<b>{len(pw_charia)}</b><br>titres",
+                                             x=0.5,y=0.5,font_size=13,showarrow=False,
+                                             font=dict(color="#10b981"))]
+                        )
+                        st.plotly_chart(fig_pc, width="stretch")
+
+                    with ch_r:
+                        st.markdown("**Poids par titre**")
+                        fig_hc = go.Figure(go.Bar(
+                            x=pw_charia.values*100, y=pw_charia.index,
+                            orientation="h",
+                            marker=dict(color="#10b981", opacity=0.85),
+                            text=[f"{v*100:.2f}%" for v in pw_charia.values],
+                            textposition="outside",
+                            textfont=dict(size=9, color="#94a3b8")
+                        ))
+                        fig_hc.update_layout(
+                            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                            height=360, font=dict(color="#94a3b8", family="JetBrains Mono"),
+                            margin=dict(l=10,r=80,t=20,b=30),
+                            xaxis=dict(gridcolor="#1e2d45", ticksuffix="%"),
+                            yaxis=dict(autorange="reversed")
+                        )
+                        st.plotly_chart(fig_hc, width="stretch")
+
+                    ranks_c = mf.reindex(pw_charia.index).rank(
+                        ascending=False, method="min")
+                    alloc_c = pd.DataFrame({
+                        "Ticker":       pw_charia.index,
+                        "Rang MF":      ranks_c.loc[pw_charia.index].astype(int),
+                        "Score MF":     mf.loc[pw_charia.index].round(6),
+                        "☪️ Charia":   [get_charia_label(t,st.session_state.charia_results)
+                                         for t in pw_charia.index],
+                        "Poids α(T,t)": pw_charia.values,
+                        "Poids (%)":    (pw_charia.values*100).round(4),
+                    }).reset_index(drop=True)
+
+                    st.dataframe(
+                        alloc_c.style.format({
+                            "Score MF":     "{:.6f}",
+                            "Poids α(T,t)": "{:.6f}",
+                            "Poids (%)":    "{:.4f}%"
+                        }), width="stretch", hide_index=True
+                    )
+                    buf_c = io.BytesIO(); alloc_c.to_excel(buf_c, index=False)
+                    st.download_button("⬇️ Exporter portefeuille Charia (Excel)",
+                        buf_c.getvalue(), "portefeuille_charia_BRVM.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                else:
+                    st.info("☪️ Aucun titre Charia compatible dans le portefeuille cible. "
+                            "Élargissez les filtres ou chargez le fichier de screening.")
+
 
 # ══ VALORISATION ═══════════════════════════════════════════════
 with t8:
@@ -2623,10 +2732,11 @@ with t8:
         if fs_file:
             with st.spinner("Parsing des états financiers..."):
                 new_data = parse_financial_file(fs_file)
-                # Validation automatique des unités
                 nb_titres_tmp = st.session_state.data.get("nb_titres", {}) \
                                 if st.session_state.data else {}
                 cours_tmp     = st.session_state.data.get("cours", pd.DataFrame()) \
+                                if st.session_state.data else pd.DataFrame()
+                moy_tmp       = st.session_state.data.get("moyenne_cours", pd.DataFrame()) \
                                 if st.session_state.data else pd.DataFrame()
                 if nb_titres_tmp and not cours_tmp.empty:
                     from fs_parser import validate_and_fix_units
@@ -2635,25 +2745,53 @@ with t8:
                     )
                     if corrections:
                         st.warning(
-                            f"⚠️ Correction automatique d'unités appliquée sur "
-                            f"{len(corrections)} ticker(s) : "
-                            + ", ".join(
-                                f"{t} (PE {v['pe_avant']}x → {v['pe_apres']}x)"
-                                for t, v in corrections.items()
-                            )
+                            f"⚠️ Correction automatique d'unités : "
+                            + ", ".join(f"{t} (PE {v['pe_avant']}x→{v['pe_apres']}x)"
+                                        for t, v in corrections.items())
                         )
                 existing = load_financial_db(VALUATION_DB_PATH)
                 merged   = merge_financial_data(existing, new_data)
                 save_financial_db(merged, VALUATION_DB_PATH)
                 st.session_state.fin_data = merged
+
+                # ── Screening Charia automatique depuis fin_data ──────
+                if CHARIA_AVAILABLE and nb_titres_tmp:
+                    charia_auto = screen_all_from_fin_data(
+                        merged, nb_titres_tmp, moy_tmp
+                    )
+                    # Fusion avec screening existant (priorité au fichier statique)
+                    existing_charia = st.session_state.charia_results
+                    for t, r in charia_auto.items():
+                        if t not in existing_charia:
+                            existing_charia[t] = r
+                    st.session_state.charia_results = existing_charia
+
             tickers_new = set(new_data.keys()) - set(existing.keys())
             years_new   = {yr for t in new_data.values() for yr in t.keys()}
+            n_charia    = len(get_charia_compatible_tickers(
+                              st.session_state.charia_results)) \
+                          if CHARIA_AVAILABLE else 0
             st.success(
-                f"✅ {len(new_data)} sociétés chargées · "
-                f"Années : {sorted(years_new)} · "
-                f"Nouveaux tickers : {sorted(tickers_new) if tickers_new else 'aucun'} · "
-                f"Base totale : {len(merged)} sociétés"
+                f"✅ {len(new_data)} sociétés · Années : {sorted(years_new)} · "
+                f"Base : {len(merged)} · ☪️ Charia compatibles : {n_charia}"
             )
+
+    # ── Chargement fichier screening Charia statique ───────────
+    if CHARIA_AVAILABLE:
+        with st.expander("☪️ Charger le fichier de screening Charia (optionnel)", expanded=False):
+            charia_file = st.file_uploader(
+                "CHARIA_SCREENING_MODEL.xlsx — enrichit le screening automatique",
+                type=["xlsx","xls"], key="charia_uploader"
+            )
+            if charia_file:
+                with st.spinner("Parsing screening Charia..."):
+                    charia_static = parse_charia(charia_file)
+                    # Le fichier statique a priorité sur le calcul auto
+                    merged_charia = {**st.session_state.charia_results, **charia_static}
+                    st.session_state.charia_results = merged_charia
+                n_ok = len(get_charia_compatible_tickers(merged_charia))
+                st.success(f"✅ {len(charia_static)} tickers screenés · "
+                           f"☪️ {n_ok} compatibles Charia")
 
     with col_db:
         fin_data = st.session_state.fin_data
@@ -2838,23 +2976,14 @@ with t8:
                     if not s.empty:
                         cours_act = float(s.iloc[-1])
 
-                potentiel = (p_comb - cours_act) / cours_act * 100 if not np.isnan(cours_act) else np.nan
-                signal = ("🟢 Achat" if potentiel > 10 else
-                          "🔴 Vente" if potentiel < -10 else
-                          "🟡 Neutre") if not np.isnan(potentiel) else "—"
-
-                pm = v.get("prix_modeles", {})
-
-                # Secteur : priorité SECTOR_MAP (fichier officiel) → fallback fin_data
-                sect = SECTOR_MAP.get(ticker.upper())
-                if not sect:
-                    fd = fin_data.get(ticker, {})
-                    yr_last = max(fd.keys()) if fd else None
-                    sect = fd.get(yr_last, {}).get("secteur", "—") if fd and yr_last else "—"
+                pot_num = potentiel if not np.isnan(potentiel) else 0
+                charia_lbl = get_charia_label(ticker, st.session_state.charia_results) \
+                             if CHARIA_AVAILABLE else "—"
 
                 rows.append({
                     "Ticker":      ticker,
                     "Secteur":     sect,
+                    "☪️ Charia":   charia_lbl,
                     "Cours actuel": f"{cours_act:,.0f}" if not np.isnan(cours_act) else "—",
                     "DDM":          f"{pm.get('DDM',0):,.0f}"  if "DDM" in pm  else "—",
                     "P/E":          f"{pm.get('P/E',0):,.0f}"  if "P/E" in pm  else "—",
@@ -2863,14 +2992,15 @@ with t8:
                     "Prix cible":   f"{p_comb:,.0f}",
                     "Potentiel":    f"{potentiel:+.1f}%" if not np.isnan(potentiel) else "—",
                     "Signal":       signal,
-                    "_pot_num":     potentiel if not np.isnan(potentiel) else 0,
+                    "_pot_num":     pot_num,
                 })
 
             if not rows:
                 st.warning("Aucun résultat disponible — vérifiez que les nb_titres sont chargés.")
             else:
                 df_res = pd.DataFrame(rows).sort_values("_pot_num", ascending=False)
-                display_cols = ["Ticker","Secteur","Cours actuel","DDM","P/E","P/B","DCF","Prix cible","Potentiel","Signal"]
+                display_cols = ["Ticker","Secteur","☪️ Charia","Cours actuel",
+                            "DDM","P/E","P/B","DCF","Prix cible","Potentiel","Signal"]
                 st.dataframe(df_res[display_cols], width="stretch", hide_index=True)
 
                 # Graphique potentiels
