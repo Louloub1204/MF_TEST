@@ -23,6 +23,13 @@ BANK_TICKERS = {
     "ORGT","SAFC","BICB","BNBC",
 }
 
+# Tickers exclus pour activités sectorielles illicites
+ILLICIT_SECTOR_TICKERS = {
+    "STBC": "Industrie du tabac",
+    "LNBB": "Jeux de hasard / loterie",
+    "SLBC": "Production / distribution de boissons alcoolisées",
+}
+
 # Seuils par standard
 SEUILS = {
     "DJIM":  {"RE": 0.33, "RC_actif": 0.50, "RL": 0.33},
@@ -170,6 +177,21 @@ def screen_from_fin_data(ticker, fin_data, nb_titres, cours_moy=None):
             "ratios":        {},
         }
 
+    # ── 2. Exclusion secteurs illicites (tabac, jeux, alcool) ─
+    illicit_sector = ILLICIT_SECTOR_TICKERS.get(ticker.upper())
+    if illicit_sector:
+        return {
+            "compatible":    False,
+            "n_standards":   0,
+            "halal_sector":  False,
+            "excluded":      True,
+            "raison":        f"Secteur illicite — {illicit_sector}",
+            "standards":     {s: {"pass": False} for s in ["DJIM","FTSE","S&P","AAOIFI"]},
+            "annee":         yr,
+            "source":        "fin_data",
+            "ratios":        {},
+        }
+
     dette  = abs(p.get("dette_financiere") or 0)
     crean  = abs(p.get("creances_clientele") or 0)
     cash   = abs(p.get("tresorerie") or 0)
@@ -249,7 +271,16 @@ def get_charia_label(ticker, screening_results):
     if r is None:
         return "—"
     if r.get("excluded"):
-        return "🏦 Exclu (banque)"
+        raison = r.get("raison", "")
+        if "Banque" in raison:
+            return "🏦 Exclu (banque)"
+        if "tabac" in raison.lower():
+            return "🚬 Exclu (tabac)"
+        if "jeux" in raison.lower():
+            return "🎲 Exclu (jeux)"
+        if "alcool" in raison.lower():
+            return "🍺 Exclu (alcool)"
+        return f"⛔ Exclu"
     n = r.get("n_standards", 0)
     if not r.get("halal_sector"):
         return f"☽ Riba {n}/4"
