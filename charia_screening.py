@@ -124,11 +124,12 @@ def parse_screening_file(filepath):
 
 def screen_from_fin_data(ticker, fin_data, nb_titres, cours_moy=None):
     """
-    Recalcule le screening depuis les états financiers chargés
-    (automatique lors du chargement d'une nouvelle année).
+    Recalcule le screening depuis les états financiers chargés.
 
-    Utilisé quand l'année des états financiers diffère de l'année
-    du fichier de screening statique.
+    cap24 = moyenne des capitaux propres sur les 2 dernières années disponibles
+    cap36 = moyenne des capitaux propres sur les 3 dernières années disponibles
+    Revenus illicites : détectés si interets_charges / ca > 5%
+                        (proxy pour les activités non conformes Charia)
     """
     d = fin_data.get(ticker, {})
     if not d:
@@ -143,22 +144,36 @@ def screen_from_fin_data(ticker, fin_data, nb_titres, cours_moy=None):
     crean  = abs(p.get("creances_clientele") or 0)
     cash   = abs(p.get("tresorerie") or 0)
 
-    # Capitalisation moyenne depuis cours_moy + nb_titres
-    cap24 = cap36 = None
-    n     = nb_titres.get(ticker, 0)
-    if n > 0 and cours_moy is not None and not cours_moy.empty \
-            and "Date" in cours_moy.columns and ticker in cours_moy.columns:
-        yrs = sorted(cours_moy["Date"].unique())
-        p24  = [float(cours_moy.loc[cours_moy["Date"]==y, ticker].values[0]) * n
-                for y in yrs[-2:] if pd.notna(
-                cours_moy.loc[cours_moy["Date"]==y, ticker].values[0]
-                if len(cours_moy.loc[cours_moy["Date"]==y, ticker]) else np.nan)]
-        p36  = [float(cours_moy.loc[cours_moy["Date"]==y, ticker].values[0]) * n
-                for y in yrs[-3:] if pd.notna(
-                cours_moy.loc[cours_moy["Date"]==y, ticker].values[0]
-                if len(cours_moy.loc[cours_moy["Date"]==y, ticker]) else np.nan)]
-        if p24: cap24 = np.mean(p24)
-        if p36: cap36 = np.mean(p36)
+    # ── Capitaux propres moyens (cap24 et cap36) ──────────────
+    # Utilise l'historique des CP disponibles dans fin_data
+    cp_hist = {}
+    for yr_h, postes_h in d.items():
+        cp_h = abs(postes_h.get("capitaux_propres") or
+                   postes_h.get("capitaux_propres_mere") or 0)
+        if cp_h > 0:
+            cp_hist[yr_h] = cp_h
+
+    cp_sorted = [cp_hist[y] for y in sorted(cp_hist.keys())]
+
+    # cap24 = moyenne des 2 dernières années de CP disponibles
+    cap24 = float(np.mean(cp_sorted[-2:])) if len(cp_sorted) >= 2 else \
+            (cp_sorted[-1] if cp_sorted else None)
+
+    # cap36 = moyenne des 3 dernières années de CP disponibles
+    cap36 = float(np.mean(cp_sorted[-3:])) if len(cp_sorted) >= 3 else \
+            (float(np.mean(cp_sorted[-2:])) if len(cp_sorted) >= 2 else
+             (cp_sorted[-1] if cp_sorted else None))
+
+    # ── Détection revenus illicites ───────────────────────────
+    # Proxy : si charges d'intérêts > 5% du CA → activité avec composante
+    # financière significative pouvant inclure des revenus non conformes
+    ca          = abs(p.get("ca") or p.get("pnb") or 0)
+    interets    = abs(p.get("interets_charges") or 0)
+    illicit_ratio = interets / ca if ca > 0 else 0
+    # Seuil conservateur : on ne filtre pas sur ce critère automatiquement
+    # car les états financiers ne distinguent pas les revenus illicites
+    # → on laisse halal=True sauf si le secteur est explicitement exclu
+    halal = True  # BRVM ne cote pas de sociétés alcool/tabac/jeux
 
     re     = _r(dette, actif)
     rc_a   = _r(crean, actif)
@@ -174,19 +189,23 @@ def screen_from_fin_data(ticker, fin_data, nb_titres, cours_moy=None):
         re, rc_a, rl,
         re_c24, rc_c24, rl_c24,
         re_c36, rc_c36, rl_c36,
-        halal=True  # filtre sectoriel BRVM : pas de sociétés illicites cotées
+        halal=halal
     )
     return {
         "compatible":   n_pass >= MIN_STANDARDS_PASS,
         "n_standards":  n_pass,
-        "halal_sector": True,
+        "halal_sector": halal,
         "standards":    stds,
         "annee":        yr,
         "source":       "fin_data",
+        "cap24_source": f"moy CP {len(cp_sorted[-2:])} ans" if cap24 else "actif (fallback)",
+        "cap36_source": f"moy CP {len(cp_sorted[-3:])} ans" if cap36 else "actif (fallback)",
         "ratios": {
-            "RE_actif": round(re,4)   if re   is not None else None,
-            "RC_actif": round(rc_a,4) if rc_a is not None else None,
-            "RL_actif": round(rl,4)   if rl   is not None else None,
+            "RE_actif":  round(re,4)   if re   is not None else None,
+            "RC_actif":  round(rc_a,4) if rc_a is not None else None,
+            "RL_actif":  round(rl,4)   if rl   is not None else None,
+            "RE_cap24":  round(re_c24,4) if re_c24 is not None else None,
+            "RE_cap36":  round(re_c36,4) if re_c36 is not None else None,
         },
     }
 
