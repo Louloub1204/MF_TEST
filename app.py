@@ -2341,28 +2341,6 @@ with t6:
                     # Mise à jour betas_mf pour le calcul MF
                     betas_mf = betas_opt
 
-                    # Infos dataset
-                    st.markdown("**ℹ️ Résumé du dataset ML**")
-                    di1, di2, di3, di4 = st.columns(4)
-                    di1.metric("Titres", len(ml_ds["tickers"]))
-                    di2.metric("Features X", ml_ds["X"].shape[1])
-                    di3.metric("Rdt cible max", f"{ml_ds['y'].max():.2%}")
-                    di4.metric("Rdt cible min", f"{ml_ds['y'].min():.2%}")
-                    st.caption(
-                        f"Fenêtre features : **{ml_ds.get('train_window','—')}** "
-                        f"(fondamentaux {ml_ds.get('year_fundamentals','—')})  ·  "
-                        f"Fenêtre cible : **{ml_ds.get('target_window','—')}**"
-                    )
-
-                    if not apply_auto or "ml_betas" in st.session_state:
-                        if st.button("📥 Appliquer les β ML à la sidebar", key="apply_ml_btn"):
-                            km = {"Value":"sv_val","Momentum":"sv_mom",
-                                  "Volatilité":"sv_vol","Dividende":"sv_div","Liquidité":"sv_liq"}
-                            for f, b in betas_opt.items():
-                                if f in km:
-                                    st.session_state[km[f]] = round(float(b), 4)
-                            st.rerun()
-
                     # Mise à jour de betas_mf pour le calcul MF ci-dessous
                     betas_mf = betas_opt
 
