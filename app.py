@@ -2072,7 +2072,7 @@ with t6:
         st.markdown("**⚖️ Mode de calibration des β_i**")
         beta_mode = st.radio(
             "Mode β",
-            ["🎛️ Manuel — curseurs sidebar", "🤖 Automatique — optimisation ML"],
+            ["🎛️ Manuel", "🤖 Automatique"],
             horizontal=True,
             label_visibility="collapsed",
         )
@@ -2080,7 +2080,7 @@ with t6:
         # ══════════════════════════════════════════════════════════
         # MODE A — MANUEL
         # ══════════════════════════════════════════════════════════
-        if beta_mode == "🎛️ Manuel — curseurs sidebar":
+        if beta_mode == "🎛️ Manuel":
             st.caption("Les β sont ceux définis dans la barre latérale ←")
             bc = st.columns(5)
             for i, fname in enumerate(["Value","Momentum","Volatilité","Dividende","Liquidité"]):
@@ -2101,27 +2101,53 @@ with t6:
                 st.warning(f"⚠️ Σβ = {bs_mf:.2f} — ajustez les curseurs dans la sidebar")
 
         # ══════════════════════════════════════════════════════════
-        # MODE B — OPTIMISATION ML
+        # MODE B — AUTOMATIQUE (3 méthodes distinctes)
         # ══════════════════════════════════════════════════════════
         else:
             if not ML_AVAILABLE:
                 st.error("❌ scikit-learn non installé. Ajoutez `scikit-learn>=1.3.0` dans requirements.txt.")
             else:
-                st.markdown("""<div class='fbox' style='margin-top:8px;'>
-                <b>Principe :</b> les scores factoriels sont recalculés sur la fenêtre d'entraînement,
-                indépendamment des onglets facteurs. Le modèle apprend quels facteurs ont le mieux
-                prédit les rendements réels sur la fenêtre cible.<br><br>
-                <b>Features X</b> : F_i(T) recalculés sur [Début features → Fin features]<br>
-                <b>Cible Y</b> : rendement total du titre T sur [Début cible → Fin cible]
-                </div>""", unsafe_allow_html=True)
+                # ── Sélection de la méthode ────────────────────────────
+                st.markdown("**🔬 Choisissez une méthode d'optimisation**")
+                methode = st.radio(
+                    "Méthode",
+                    [
+                        "① OLS — Régression sur rendements historiques",
+                        "② Walk-forward — Sharpe glissant",
+                        "③ ML — Random Forest + Gradient Boosting",
+                    ],
+                    label_visibility="collapsed",
+                )
 
+                METHODE_INFO = {
+                    "① OLS — Régression sur rendements historiques": (
+                        "Les β_i sont les coefficients d'une régression linéaire (moindres carrés) "
+                        "entre les scores factoriels F_i(T) et les rendements réalisés. "
+                        "β élevé = facteur qui explique le mieux les rendements historiques."
+                    ),
+                    "② Walk-forward — Sharpe glissant": (
+                        "La période est découpée en fenêtres glissantes. Dans chaque fenêtre, "
+                        "la corrélation score↔rendement mesure la prédictivité de chaque facteur. "
+                        "β_i = moyenne des corrélations normalisées sur toutes les fenêtres."
+                    ),
+                    "③ ML — Random Forest + Gradient Boosting": (
+                        "Deux modèles ML (Random Forest et Gradient Boosting) apprennent quels "
+                        "facteurs ont le mieux prédit les rendements. "
+                        "β_i = moyenne des importances RF et GB, normalisée."
+                    ),
+                }
+                st.info(METHODE_INFO[methode])
+
+                # ── Paramètres communs ─────────────────────────────────
+                st.markdown("---")
+                st.markdown("**📅 Fenêtres de calcul**")
                 ml_c1, ml_c2 = st.columns(2)
                 c_min = data["cours"].index.min().date()
                 c_max = data["cours"].index.max().date()
 
                 with ml_c1:
-                    st.markdown("**📐 Fenêtre Features X — Scores factoriels**")
-                    st.caption("Les 5 scores F_i(T) sont recalculés sur cette plage de dates")
+                    st.markdown("**📐 Features X — Scores factoriels**")
+                    st.caption("Scores F_i(T) recalculés sur cette plage")
                     ml_ts = st.date_input("Début features", key="ml_ts",
                         value=max(c_min, min(c_max, pd.Timestamp("2019-01-01").date())),
                         min_value=c_min, max_value=c_max)
@@ -2129,15 +2155,11 @@ with t6:
                         value=max(c_min, min(c_max, pd.Timestamp("2023-12-31").date())),
                         min_value=c_min, max_value=c_max)
                     fund_years = data.get("fundamental_years", [2024])
-                    ml_year = st.selectbox(
-                        "Année fondamentaux (Value/Dividende)",
-                        fund_years, key="ml_year",
-                        help="Année des CP, RN, FCF, CA, Rex utilisés pour recalculer les scores Value et Dividende"
-                    )
+                    ml_year = st.selectbox("Année fondamentaux", fund_years, key="ml_year")
 
                 with ml_c2:
-                    st.markdown("**🎯 Fenêtre Cible Y — Rendements réalisés**")
-                    st.caption("Variable à prédire : rendement total (P_fin - P_deb) / P_deb")
+                    st.markdown("**🎯 Cible Y — Rendements réalisés**")
+                    st.caption("Rendement total (P_fin - P_deb) / P_deb")
                     ml_tgs = st.date_input("Début cible", key="ml_tgs",
                         value=max(c_min, min(c_max, pd.Timestamp("2024-01-01").date())),
                         min_value=c_min, max_value=c_max)
@@ -2145,137 +2167,101 @@ with t6:
                         value=c_max, min_value=c_min, max_value=c_max)
                     st.markdown("<br>", unsafe_allow_html=True)
                     if ml_tgs < ml_tge:
-                        n_days = (ml_tge - ml_tgs).days
-                        st.caption(f"↳ Fenêtre cible : **{n_days} jours** calendaires")
+                        gap = (ml_tgs - ml_te).days if ml_te < ml_tgs else 0
+                        if gap > 0:
+                            st.success(f"✅ Écart features→cible : {gap} jours")
+                        else:
+                            st.warning("⚠️ Fenêtres qui se chevauchent")
 
-                # Validation visuelle des fenêtres
-                if ml_ts < ml_te and ml_tgs < ml_tge:
-                    if ml_te >= ml_tgs:
-                        st.warning("⚠️ Les fenêtres se chevauchent — la fin des features "
-                                   "est postérieure au début de la cible. "
-                                   "Idéalement : Fin features < Début cible.")
-                    else:
-                        gap = (ml_tgs - ml_te).days
-                        st.success(f"✅ Fenêtres valides · Écart entre les deux : {gap} jours")
+                # Paramètre spécifique ML
+                n_trees = 200
+                if "③ ML" in methode:
+                    n_trees = st.slider("Nombre d'arbres (RF + GB)", 50, 500, 200, 50,
+                                        key="ml_ntrees")
 
-                ml_p1, ml_p2 = st.columns(2)
-                with ml_p1:
-                    n_trees = st.slider("Nombre d'arbres", 50, 500, 200, 50, key="ml_ntrees")
-                with ml_p2:
-                    apply_auto = st.toggle("Appliquer β ML à la sidebar automatiquement",
-                                           value=True, key="ml_auto")
+                apply_auto = st.toggle(
+                    "Appliquer β à la sidebar automatiquement",
+                    value=True, key="ml_auto"
+                )
 
-                if st.button("🤖 Lancer les 3 approches + Vote majoritaire", type="primary"):
+                # ── Bouton de lancement ────────────────────────────────
+                lbl_btn = {
+                    "① OLS":  "📐 Lancer la régression OLS",
+                    "② Walk": "📈 Lancer le Walk-forward",
+                    "③ ML":   "🤖 Lancer le ML (RF + GB)",
+                }
+                btn_label = next(v for k,v in lbl_btn.items() if k[:4] in methode)
+
+                if st.button(btn_label, type="primary"):
                     if ml_ts >= ml_te:
                         st.error("Fenêtre features invalide (début ≥ fin).")
                     elif ml_tgs >= ml_tge:
                         st.error("Fenêtre cible invalide (début ≥ fin).")
                     else:
-                        results_3 = {}
-                        infos_3   = {}
-                        with st.spinner("Approche 1/3 — Régression OLS..."):
-                            b1, i1 = optimize_betas_ols(
-                                data, ml_ts, ml_te, ml_tgs, ml_tge, ml_year)
-                            results_3["① OLS"] = b1
-                            infos_3["① OLS"]   = i1
+                        betas_opt = None
+                        extra_info = None
 
-                        with st.spinner("Approche 2/3 — Walk-forward Sharpe..."):
-                            b2, i2 = optimize_betas_walkforward(
-                                data, ml_ts, ml_te, ml_tgs, ml_tge, ml_year)
-                            results_3["② Walk-forward"] = b2
-                            infos_3["② Walk-forward"]   = i2
+                        if "① OLS" in methode:
+                            with st.spinner("Régression OLS en cours..."):
+                                betas_opt, extra_info = optimize_betas_ols(
+                                    data, ml_ts, ml_te, ml_tgs, ml_tge, ml_year)
+                            if betas_opt:
+                                r2 = extra_info.get("r2", 0) if extra_info else 0
+                                st.success(f"✅ OLS terminé · R² = {r2:.4f} · "
+                                           f"{extra_info.get('n_obs',0)} observations")
 
-                        with st.spinner("Approche 3/3 — ML (Random Forest + Gradient Boosting)..."):
-                            b3, ml_res, ml_ds = optimize_betas_ml(
-                                data=data,
-                                train_start=ml_ts, train_end=ml_te,
-                                target_start=ml_tgs, target_end=ml_tge,
-                                year=ml_year, n_estimators=n_trees
-                            )
-                            results_3["③ ML (RF+GB)"] = b3
+                        elif "② Walk" in methode:
+                            with st.spinner("Walk-forward Sharpe en cours..."):
+                                betas_opt, extra_info = optimize_betas_walkforward(
+                                    data, ml_ts, ml_te, ml_tgs, ml_tge, ml_year)
+                            if betas_opt:
+                                nw = extra_info.get("n_windows", 0) if extra_info else 0
+                                st.success(f"✅ Walk-forward terminé · {nw} fenêtres calculées")
 
-                        # Vote majoritaire = médiane par facteur
-                        betas_opt = vote_majority_betas(results_3)
-                        n_ok = sum(1 for b in results_3.values() if b is not None)
+                        elif "③ ML" in methode:
+                            with st.spinner("Random Forest + Gradient Boosting en cours..."):
+                                betas_opt, ml_res, ml_ds = optimize_betas_ml(
+                                    data=data,
+                                    train_start=ml_ts, train_end=ml_te,
+                                    target_start=ml_tgs, target_end=ml_tge,
+                                    year=ml_year, n_estimators=n_trees
+                                )
+                                extra_info = ml_res
+                                st.session_state.ml_results = ml_res
+                                st.session_state.ml_dataset = ml_ds
+                            if betas_opt and ml_res:
+                                r2_rf = ml_res["Random Forest"]["r2"]
+                                r2_gb = ml_res["Gradient Boosting"]["r2"]
+                                st.success(f"✅ ML terminé · R² RF={r2_rf:.4f} · "
+                                           f"R² GB={r2_gb:.4f} · "
+                                           f"{len(ml_ds['tickers']) if ml_ds else 0} titres")
 
-                        st.session_state.ml_betas     = betas_opt
-                        st.session_state.ml_all_betas = results_3
-                        st.session_state.ml_results   = ml_res
-                        st.session_state.ml_dataset   = ml_ds
-
-                        if apply_auto and betas_opt:
-                            km = {"Value":"sv_val","Momentum":"sv_mom",
-                                  "Volatilité":"sv_vol","Dividende":"sv_div","Liquidité":"sv_liq"}
-                            for f, b in betas_opt.items():
-                                if f in km:
-                                    st.session_state[km[f]] = round(float(b), 4)
-                            st.success(
-                                f"✅ {n_ok}/3 approches réussies · "
-                                f"Vote majoritaire appliqué à la sidebar"
-                            )
-                            st.rerun()
+                        if betas_opt:
+                            st.session_state.ml_betas   = betas_opt
+                            st.session_state.ml_methode = methode
+                            if apply_auto:
+                                km = {"Value":"sv_val","Momentum":"sv_mom",
+                                      "Volatilité":"sv_vol","Dividende":"sv_div",
+                                      "Liquidité":"sv_liq"}
+                                for f, b in betas_opt.items():
+                                    if f in km:
+                                        st.session_state[km[f]] = round(float(b), 4)
+                                st.rerun()
                         else:
-                            st.success(f"✅ {n_ok}/3 approches réussies · Cliquez 📥 pour appliquer")
+                            st.error("Données insuffisantes. Vérifiez les fenêtres "
+                                     "et que les facteurs sont calculés.")
 
-                # ── Résultats 3 approches ──────────────────────────────
+                # ── Résultats de la méthode choisie ───────────────────
                 if "ml_betas" in st.session_state and st.session_state.ml_betas:
                     betas_opt    = st.session_state.ml_betas
-                    all_betas    = st.session_state.get("ml_all_betas", {})
-                    ml_res       = st.session_state.get("ml_results")
-                    ml_ds        = st.session_state.get("ml_dataset")
+                    methode_used = st.session_state.get("ml_methode", methode)
 
                     st.markdown("---")
-                    st.markdown("**📊 Comparaison des 3 approches — β par facteur**")
+                    st.markdown(f"**β optimaux — {methode_used}**")
 
                     FACTORS = ["Value","Momentum","Volatilité","Dividende","Liquidité"]
-                    APPROACHES = list(all_betas.keys()) if all_betas else []
-                    A_COLORS = ["#3b82f6","#10b981","#8b5cf6"]
 
-                    # Graphique comparatif
-                    fig_3a = go.Figure()
-                    for idx, (approach, betas_a) in enumerate(all_betas.items()):
-                        if betas_a is None:
-                            continue
-                        fig_3a.add_trace(go.Bar(
-                            name=approach,
-                            x=[f"{ICONS.get(f,'')} {f}" for f in FACTORS],
-                            y=[betas_a.get(f, 0) for f in FACTORS],
-                            marker_color=A_COLORS[idx % len(A_COLORS)],
-                            opacity=0.8,
-                        ))
-                    # Vote majoritaire en ligne
-                    fig_3a.add_trace(go.Scatter(
-                        name="🗳️ Vote majoritaire",
-                        x=[f"{ICONS.get(f,'')} {f}" for f in FACTORS],
-                        y=[betas_opt.get(f, 0) for f in FACTORS],
-                        mode="lines+markers",
-                        line=dict(color="#f59e0b", width=2.5, dash="dash"),
-                        marker=dict(size=10, symbol="diamond"),
-                    ))
-                    fig_3a.update_layout(
-                        barmode="group",
-                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                        font=dict(color="#94a3b8", family="JetBrains Mono"), height=340,
-                        legend=dict(orientation="h", y=1.1, bgcolor="rgba(0,0,0,0)"),
-                        margin=dict(l=10, r=10, t=50, b=30),
-                        xaxis=dict(gridcolor="#1e2d45"),
-                        yaxis=dict(gridcolor="#1e2d45", title="β_i"),
-                    )
-                    st.plotly_chart(fig_3a, width="stretch")
-
-                    # Tableau de synthèse
-                    st.markdown("**β par facteur — Tableau de synthèse**")
-                    tbl_rows = []
-                    for f in FACTORS:
-                        row = {"Facteur": f"{ICONS.get(f,'')} {f}"}
-                        for ap, betas_a in all_betas.items():
-                            row[ap] = f"{betas_a.get(f,0):.3f}" if betas_a else "✗"
-                        row["🗳️ Vote final"] = f"**{betas_opt.get(f,0):.3f}**"
-                        tbl_rows.append(row)
-                    st.dataframe(pd.DataFrame(tbl_rows), width="stretch", hide_index=True)
-
-                    # β finaux en cards
-                    st.markdown("**β finaux (vote majoritaire) — appliqués à la sidebar**")
+                    # Cards β
                     b_cols = st.columns(5)
                     for i, fname in enumerate(FACTORS):
                         bv = betas_opt.get(fname, 0)
@@ -2291,53 +2277,69 @@ with t6:
                                 f"</div>", unsafe_allow_html=True
                             )
 
-                    # Graphique comparaison RF vs GB
-                    st.markdown("**Comparaison Random Forest vs Gradient Boosting**")
-                    factors_ord = ["Value","Momentum","Volatilité","Dividende","Liquidité"]
-                    rf_imp = ml_res["Random Forest"]["importances"]
-                    gb_imp = ml_res["Gradient Boosting"]["importances"]
-                    comb   = (rf_imp*0.5 + gb_imp*0.5)
-                    x_lbl  = [f"{ICONS.get(f,'')} {f}" for f in factors_ord]
-
-                    fig_ml = go.Figure()
-                    fig_ml.add_trace(go.Bar(name="Random Forest", x=x_lbl,
-                        y=[rf_imp.get(f,0) for f in factors_ord],
-                        marker_color="#3b82f6", opacity=0.8))
-                    fig_ml.add_trace(go.Bar(name="Gradient Boosting", x=x_lbl,
-                        y=[gb_imp.get(f,0) for f in factors_ord],
-                        marker_color="#8b5cf6", opacity=0.8))
-                    fig_ml.add_trace(go.Scatter(name="β combiné", x=x_lbl,
-                        y=[comb.get(f,0) for f in factors_ord],
-                        mode="lines+markers",
-                        line=dict(color="#06b6d4", width=2, dash="dash"),
-                        marker=dict(size=8, symbol="diamond")))
-                    fig_ml.update_layout(barmode="group",
+                    # Graphique β optimaux vs sidebar actuels
+                    st.markdown("**β optimaux vs β sidebar actuels**")
+                    cur = st.session_state.get("betas", {f: 0.20 for f in FACTORS})
+                    x_lbl = [f"{ICONS.get(f,'')} {f}" for f in FACTORS]
+                    fig_cmp = go.Figure()
+                    fig_cmp.add_trace(go.Bar(
+                        name="β optimaux", x=x_lbl,
+                        y=[betas_opt.get(f,0) for f in FACTORS],
+                        marker_color="#3b82f6", opacity=0.85
+                    ))
+                    fig_cmp.add_trace(go.Bar(
+                        name="β sidebar", x=x_lbl,
+                        y=[cur.get(f,0) for f in FACTORS],
+                        marker_color="#475569", opacity=0.6
+                    ))
+                    fig_cmp.update_layout(
+                        barmode="group",
                         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                         font=dict(color="#94a3b8", family="JetBrains Mono"), height=300,
                         legend=dict(orientation="h", y=1.1, bgcolor="rgba(0,0,0,0)"),
-                        margin=dict(l=10,r=10,t=45,b=30),
+                        margin=dict(l=10,r=10,t=40,b=30),
                         xaxis=dict(gridcolor="#1e2d45"),
-                        yaxis=dict(gridcolor="#1e2d45", title="Importance"))
-                    st.plotly_chart(fig_ml, width="stretch")
+                        yaxis=dict(gridcolor="#1e2d45", title="β_i"),
+                    )
+                    st.plotly_chart(fig_cmp, width="stretch")
 
-                    # Tableau comparatif β ML vs sidebar
-                    st.markdown("**β ML optimaux vs β sidebar actuels**")
-                    cur = st.session_state.get("betas",{f:0.20 for f in factors_ord})
-                    rows_cmp = []
-                    for f in factors_ord:
-                        b_ml  = betas_opt.get(f, 0)
-                        b_cur = cur.get(f, 0)
-                        diff  = b_ml - b_cur
-                        arr   = "▲" if diff > 0.01 else ("▼" if diff < -0.01 else "≈")
-                        rows_cmp.append({
-                            "Facteur": f"{ICONS.get(f,'')} {f}",
-                            "β ML": f"{b_ml:.4f}",
-                            "β sidebar": f"{b_cur:.4f}",
-                            "Δ": f"{arr} {diff:+.4f}",
-                            "R² RF": f"{ml_res['Random Forest']['r2']:.4f}",
-                            "R² GB": f"{ml_res['Gradient Boosting']['r2']:.4f}",
-                        })
-                    st.dataframe(pd.DataFrame(rows_cmp), width="stretch", hide_index=True)
+                    # Détail ML si disponible
+                    if "③ ML" in methode_used and st.session_state.get("ml_results"):
+                        ml_res = st.session_state.ml_results
+                        st.markdown("**Détail ML — Importance RF vs GB**")
+                        factors_ord = FACTORS
+                        rf_imp = ml_res["Random Forest"]["importances"]
+                        gb_imp = ml_res["Gradient Boosting"]["importances"]
+                        fig_ml = go.Figure()
+                        fig_ml.add_trace(go.Bar(name="Random Forest", x=x_lbl,
+                            y=[rf_imp.get(f,0) for f in factors_ord],
+                            marker_color="#3b82f6", opacity=0.8))
+                        fig_ml.add_trace(go.Bar(name="Gradient Boosting", x=x_lbl,
+                            y=[gb_imp.get(f,0) for f in factors_ord],
+                            marker_color="#8b5cf6", opacity=0.8))
+                        fig_ml.update_layout(barmode="group",
+                            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                            font=dict(color="#94a3b8", family="JetBrains Mono"), height=280,
+                            legend=dict(orientation="h", y=1.1, bgcolor="rgba(0,0,0,0)"),
+                            margin=dict(l=10,r=10,t=40,b=30),
+                            xaxis=dict(gridcolor="#1e2d45"),
+                            yaxis=dict(gridcolor="#1e2d45"))
+                        st.plotly_chart(fig_ml, width="stretch")
+
+                    # Bouton appliquer si toggle off
+                    if not apply_auto:
+                        if st.button("📥 Appliquer ces β à la sidebar",
+                                     key="apply_auto_btn"):
+                            km = {"Value":"sv_val","Momentum":"sv_mom",
+                                  "Volatilité":"sv_vol","Dividende":"sv_div",
+                                  "Liquidité":"sv_liq"}
+                            for f, b in betas_opt.items():
+                                if f in km:
+                                    st.session_state[km[f]] = round(float(b), 4)
+                            st.rerun()
+
+                    # Mise à jour betas_mf pour le calcul MF
+                    betas_mf = betas_opt
 
                     # Infos dataset
                     st.markdown("**ℹ️ Résumé du dataset ML**")
