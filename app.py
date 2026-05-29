@@ -1731,10 +1731,10 @@ def run_backtest(cours_df, factor_results, betas,
                   'BRVM-C TR','BRVM-CB','BRVM-CD','BRVM-ENER',
                   'BRVM-SFIN','BRVM-SPUB','Date'}
 
-    # Nettoyage des cours
+    # Nettoyage des cours — forcer float, exclure colonnes indices
     cours = cours_df.apply(pd.to_numeric, errors="coerce")
     ticker_cols = [c for c in cours.columns if c not in BENCH_COLS]
-    cours = cours[ticker_cols].ffill()
+    cours = cours[ticker_cols]
 
     # Filtrage période
     sd = pd.to_datetime(start_date)
@@ -1743,12 +1743,20 @@ def run_backtest(cours_df, factor_results, betas,
     if cours.empty or len(cours) < 20:
         return None
 
-    # Rendements journaliers — forcer float64 dès le départ
-    ret = cours.apply(pd.to_numeric, errors="coerce").pct_change()
-    ret = ret.apply(pd.to_numeric, errors="coerce").fillna(0)
-    # S'assurer que chaque cellule est bien un scalaire float
-    for col in ret.columns:
-        ret[col] = pd.to_numeric(ret[col], errors="coerce").fillna(0)
+    # Garder seulement les titres avec au moins 50% de données
+    n_rows = len(cours)
+    coverage = cours.notna().sum() / n_rows
+    cours = cours[coverage[coverage >= 0.50].index]
+
+    # Forward-fill puis backward-fill pour les trous ponctuels
+    cours = cours.ffill().bfill()
+
+    # Remplacer les zéros/négatifs par NaN (cours invalides)
+    cours = cours.where(cours > 0, np.nan).ffill().bfill()
+
+    # Rendements journaliers — clippés à [-20%, +30%] pour éviter les aberrations
+    ret = cours.pct_change()
+    ret = ret.clip(lower=-0.20, upper=0.30).fillna(0)
 
     # Dates de rebalancement
     rebal_dates = pd.date_range(
@@ -1876,49 +1884,60 @@ def run_backtest(cours_df, factor_results, betas,
     rf_daily = 0.06 / 252
 
     def metrics(series):
-        s = pd.to_numeric(series, errors="coerce").dropna()
-        if len(s) < 2:
+        s = pd.to_numeric(series, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+        if len(s) < 2 or s.iloc[0] == 0:
             return {}
-        rets = s.pct_change().dropna()
-        rets = pd.to_numeric(rets, errors="coerce").dropna()
-        if len(rets) < 2:
+        rets = s.pct_change().replace([np.inf, -np.inf], np.nan).dropna()
+        rets = rets.clip(-0.20, 0.30)
+        if len(rets) < 5:
             return {}
         n_years = len(rets) / 252
-        cagr = (s.iloc[-1] / s.iloc[0]) ** (1/n_years) - 1 if n_years > 0 else 0
-        vol  = float(rets.std()) * np.sqrt(252)
-        std_ = float(rets.std())
-        sharpe = float((rets.mean() - rf_daily) / std_ * np.sqrt(252)) \
-                 if std_ > 0 else 0
-        roll_max = s.cummax()
-        dd = (s - roll_max) / roll_max
-        max_dd = float(dd.min())
+        if n_years <= 0 or s.iloc[0] <= 0 or s.iloc[-1] <= 0:
+            return {}
+        cagr    = (s.iloc[-1] / s.iloc[0]) ** (1/n_years) - 1
+        vol     = float(rets.std()) * np.sqrt(252)
+        std_    = float(rets.std())
+        sharpe  = float((rets.mean() - rf_daily) / std_ * np.sqrt(252)) \
+                  if std_ > 0 else 0.0
+        roll_max = s.cummax().replace(0, np.nan)
+        dd       = ((s - roll_max) / roll_max).replace([np.inf,-np.inf], np.nan)
+        max_dd   = float(dd.min()) if not dd.isna().all() else 0.0
         total_ret = float(s.iloc[-1] / s.iloc[0]) - 1
+
+        # Sanity check
+        if not np.isfinite(cagr) or not np.isfinite(vol):
+            return {}
+
         return {
             "Rendement total":     f"{total_ret:+.2%}",
             "CAGR":                f"{cagr:+.2%}",
             "Volatilité annuelle": f"{vol:.2%}",
             "Ratio de Sharpe":     f"{sharpe:.3f}",
             "Max Drawdown":        f"{max_dd:.2%}",
-            "_cagr":               cagr,
-            "_vol":                vol,
-            "_sharpe":             sharpe,
-            "_maxdd":              max_dd,
-            "_total":              total_ret,
+            "_cagr":  cagr, "_vol":   vol,
+            "_sharpe":sharpe, "_maxdd":max_dd, "_total":total_ret,
         }
 
     mets = {k: metrics(perf[k]) for k in perf.columns}
 
     # Alpha / Beta vs BRVM Composite
     def alpha_beta(port_series, bm_series):
-        pr = port_series.pct_change().dropna()
-        br = bm_series.pct_change().dropna()
+        pr = pd.to_numeric(port_series, errors="coerce").pct_change().replace(
+            [np.inf,-np.inf], np.nan).dropna().clip(-0.20, 0.30)
+        br = pd.to_numeric(bm_series,   errors="coerce").pct_change().replace(
+            [np.inf,-np.inf], np.nan).dropna().clip(-0.20, 0.30)
         common = pr.index.intersection(br.index)
         if len(common) < 20:
             return None, None
         pr, br = pr.loc[common], br.loc[common]
-        beta = pr.cov(br) / br.var() if br.var() > 0 else 1
-        alpha = (pr.mean() - beta * br.mean()) * 252
-        return float(alpha), float(beta)
+        bvar = float(br.var())
+        if bvar <= 0 or not np.isfinite(bvar):
+            return None, None
+        beta  = float(pr.cov(br) / bvar)
+        alpha = float((pr.mean() - beta * br.mean()) * 252)
+        if not np.isfinite(alpha) or not np.isfinite(beta):
+            return None, None
+        return alpha, beta
 
     for k in ["Portefeuille MF", "Portefeuille Charia"]:
         a, b = alpha_beta(perf[k], perf["BRVM Composite"])
