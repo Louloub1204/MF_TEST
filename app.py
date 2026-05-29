@@ -1743,8 +1743,12 @@ def run_backtest(cours_df, factor_results, betas,
     if cours.empty or len(cours) < 20:
         return None
 
-    # Rendements journaliers
-    ret = cours.pct_change().fillna(0)
+    # Rendements journaliers — forcer float64 dès le départ
+    ret = cours.apply(pd.to_numeric, errors="coerce").pct_change()
+    ret = ret.apply(pd.to_numeric, errors="coerce").fillna(0)
+    # S'assurer que chaque cellule est bien un scalaire float
+    for col in ret.columns:
+        ret[col] = pd.to_numeric(ret[col], errors="coerce").fillna(0)
 
     # Dates de rebalancement
     rebal_dates = pd.date_range(
@@ -1831,21 +1835,25 @@ def run_backtest(cours_df, factor_results, betas,
                 w_ch = compute_weights_at(date, eligible=charia_tickers)
             next_rebal_idx += 1
 
-        # Rendements du jour
-        day_ret = ret.loc[date].apply(pd.to_numeric, errors="coerce").fillna(0)
-
-        if w_pf is not None:
-            common_pf = w_pf.index.intersection(day_ret.index)
-            r_pf = float((w_pf[common_pf] * day_ret[common_pf]).sum())
+        # Rendements du jour — extraction scalaire garantie
+        day_ret_raw = ret.loc[date]
+        if isinstance(day_ret_raw, pd.DataFrame):
+            day_ret = day_ret_raw.iloc[0].apply(pd.to_numeric, errors="coerce").fillna(0)
         else:
-            r_pf = float(day_ret.mean())
+            day_ret = pd.to_numeric(day_ret_raw, errors="coerce").fillna(0)
 
-        if w_ch is not None and charia_tickers:
-            common_ch = w_ch.index.intersection(day_ret.index)
-            r_ch = float((w_ch[common_ch] * day_ret[common_ch]).sum())
-        else:
-            r_ch = r_pf
+        def port_ret(weights):
+            if weights is None:
+                return float(day_ret.mean())
+            common = weights.index.intersection(day_ret.index)
+            if common.empty:
+                return 0.0
+            w = pd.to_numeric(weights[common], errors="coerce").fillna(0)
+            r = pd.to_numeric(day_ret[common],  errors="coerce").fillna(0)
+            return float((w * r).sum())
 
+        r_pf = port_ret(w_pf)
+        r_ch = port_ret(w_ch) if (w_ch is not None and charia_tickers) else r_pf
         r_bm = float(day_ret.mean())
 
         val_pf *= (1 + r_pf)
