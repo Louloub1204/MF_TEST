@@ -3487,17 +3487,22 @@ with t9:
 
             # Drawdown
             st.markdown("**📉 Drawdown**")
+            # Conversion hex → rgba pour fillcolor (Plotly n'accepte pas hex 8 chars)
+            def hex_to_rgba(hex_color, alpha=0.15):
+                h = hex_color.lstrip("#")
+                r, g, b = int(h[0:2],16), int(h[2:4],16), int(h[4:6],16)
+                return f"rgba({r},{g},{b},{alpha})"
+
             fig_dd = go.Figure()
             for col in PORTF_COLS:
-                s = perf[col]
-                dd = (s - s.cummax()) / s.cummax() * 100
+                s   = perf[col]
+                dd  = (s - s.cummax()) / s.cummax() * 100
+                clr = PORTF_CLRS.get(col, "#94a3b8")
                 fig_dd.add_trace(go.Scatter(
                     x=dd.index, y=dd,
                     name=col, fill="tozeroy",
-                    line=dict(color=PORTF_CLRS.get(col,"#94a3b8"), width=1),
-                    fillcolor=PORTF_CLRS.get(col,"#94a3b8").replace(")", ",0.15)").replace("rgb","rgba")
-                                if "rgb" in PORTF_CLRS.get(col,"") else
-                                PORTF_CLRS.get(col,"#94a3b8") + "26",
+                    line=dict(color=clr, width=1),
+                    fillcolor=hex_to_rgba(clr, 0.15),
                     hovertemplate=f"<b>{col}</b><br>%{{y:.2f}}%<extra></extra>"
                 ))
             fig_dd.update_layout(
