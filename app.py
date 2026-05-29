@@ -1832,21 +1832,21 @@ def run_backtest(cours_df, factor_results, betas,
             next_rebal_idx += 1
 
         # Rendements du jour
-        day_ret = ret.loc[date]
+        day_ret = ret.loc[date].apply(pd.to_numeric, errors="coerce").fillna(0)
 
         if w_pf is not None:
             common_pf = w_pf.index.intersection(day_ret.index)
-            r_pf = (w_pf[common_pf] * day_ret[common_pf]).sum()
+            r_pf = float((w_pf[common_pf] * day_ret[common_pf]).sum())
         else:
-            r_pf = day_ret.mean()
+            r_pf = float(day_ret.mean())
 
         if w_ch is not None and charia_tickers:
             common_ch = w_ch.index.intersection(day_ret.index)
-            r_ch = (w_ch[common_ch] * day_ret[common_ch]).sum()
+            r_ch = float((w_ch[common_ch] * day_ret[common_ch]).sum())
         else:
             r_ch = r_pf
 
-        r_bm = day_ret.mean()  # équipondéré = proxy BRVM Composite
+        r_bm = float(day_ret.mean())
 
         val_pf *= (1 + r_pf)
         val_ch *= (1 + r_ch)
@@ -1859,28 +1859,32 @@ def run_backtest(cours_df, factor_results, betas,
     # ── Séries de performance ──────────────────────────────────
     idx = cours.index
     perf = pd.DataFrame({
-        "Portefeuille MF":      pf_values,
-        "Portefeuille Charia":  ch_values,
-        "BRVM Composite":       bm_values,
+        "Portefeuille MF":      pd.array(pf_values, dtype=float),
+        "Portefeuille Charia":  pd.array(ch_values, dtype=float),
+        "BRVM Composite":       pd.array(bm_values, dtype=float),
     }, index=idx)
 
     # ── Métriques ─────────────────────────────────────────────
     rf_daily = 0.06 / 252
 
     def metrics(series):
-        s = series.dropna()
+        s = pd.to_numeric(series, errors="coerce").dropna()
         if len(s) < 2:
             return {}
         rets = s.pct_change().dropna()
+        rets = pd.to_numeric(rets, errors="coerce").dropna()
+        if len(rets) < 2:
+            return {}
         n_years = len(rets) / 252
         cagr = (s.iloc[-1] / s.iloc[0]) ** (1/n_years) - 1 if n_years > 0 else 0
-        vol  = rets.std() * np.sqrt(252)
-        sharpe = (rets.mean() - rf_daily) / rets.std() * np.sqrt(252) \
-                 if rets.std() > 0 else 0
+        vol  = float(rets.std()) * np.sqrt(252)
+        std_ = float(rets.std())
+        sharpe = float((rets.mean() - rf_daily) / std_ * np.sqrt(252)) \
+                 if std_ > 0 else 0
         roll_max = s.cummax()
         dd = (s - roll_max) / roll_max
-        max_dd = dd.min()
-        total_ret = (s.iloc[-1] / s.iloc[0]) - 1
+        max_dd = float(dd.min())
+        total_ret = float(s.iloc[-1] / s.iloc[0]) - 1
         return {
             "Rendement total":     f"{total_ret:+.2%}",
             "CAGR":                f"{cagr:+.2%}",
