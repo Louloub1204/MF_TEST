@@ -633,25 +633,36 @@ def compute_portfolio_weights(mf, included=None):
 def run_optimization_pipeline(mf_scores, data, factor_results,
                               min_vol_pct, top_pct, max_corr,
                               use_markowitz, risk_aversion, mf_weight,
-                              min_w, max_w, window):
+                              min_w, max_w, window,
+                              use_sector_constraint=False, max_sector_pct=0.40,
+                              use_corr_constraint=False, max_avg_corr=0.50):
     """
-    Pipeline séquentiel des 4 filtres.
-    Retourne (universe_final, weights, étapes_log).
+    Pipeline séquentiel — 4 filtres de base + 2 contraintes optionnelles.
+
+    Contrainte ④ (optionnelle) — Sectorielle :
+      Après pondération par rang MF, si un secteur dépasse max_sector_pct,
+      on retire itérativement les titres les moins bien scorés du secteur
+      en excès jusqu'à respecter le seuil.
+
+    Contrainte ⑤ (optionnelle) — Corrélation effective :
+      Parmi les titres restants, on sélectionne le sous-ensemble qui
+      minimise la corrélation moyenne du portefeuille tout en conservant
+      les meilleurs scores MF (greedy forward selection).
     """
     log = []
     universe = mf_scores.index.tolist()
     log.append(("Univers initial", len(universe), universe))
 
-    # Filtre 1 — Liquidité
+    # ── Filtre 1 — Liquidité ───────────────────────────────────
     liq = factor_results.get("Liquidité")
     universe = filter_liquidity(mf_scores, liq, min_vol_pct)
     log.append(("① Filtre Liquidité", len(universe), universe))
 
-    # Filtre 2 — Score MF
+    # ── Filtre 2 — Score MF ────────────────────────────────────
     universe = filter_mf_percentile(mf_scores, universe, top_pct)
     log.append(("② Filtre Score MF", len(universe), universe))
 
-    # Filtre 3 — Corrélation
+    # ── Filtre 3 — Corrélation paires ─────────────────────────
     universe = filter_correlation(mf_scores, universe,
                                   data["cours"], max_corr, window)
     log.append(("③ Filtre Corrélation", len(universe), universe))
@@ -659,7 +670,85 @@ def run_optimization_pipeline(mf_scores, data, factor_results,
     if len(universe) == 0:
         return [], None, log
 
-    # Filtre 4 — Poids optimaux
+    # ── Contrainte ④ — Sectorielle (optionnelle) ───────────────
+    if use_sector_constraint and SECTOR_MAP:
+        universe_work = list(universe)
+        changed = True
+        while changed:
+            changed = False
+            # Calculer les poids provisoires par rang MF
+            w_tmp = compute_portfolio_weights(mf_scores, included=universe_work)
+            # Répartition sectorielle
+            sect_w = {}
+            for t, w in w_tmp.items():
+                s = SECTOR_MAP.get(t.upper(), "Autre")
+                sect_w[s] = sect_w.get(s, 0) + float(w)
+            # Trouver les secteurs en excès
+            for sec, sw in sect_w.items():
+                if sw > max_sector_pct:
+                    # Titres de ce secteur dans l'univers, triés par score MF (desc)
+                    sec_tickers = sorted(
+                        [t for t in universe_work
+                         if SECTOR_MAP.get(t.upper(), "Autre") == sec],
+                        key=lambda t: float(mf_scores.get(t, 0)),
+                        reverse=True
+                    )
+                    # Retirer le moins bien scoré du secteur
+                    if len(sec_tickers) > 1:
+                        universe_work.remove(sec_tickers[-1])
+                        changed = True
+                        break  # recalculer
+        universe = universe_work
+        log.append(("④ Contrainte Sectorielle", len(universe), universe))
+
+    if len(universe) == 0:
+        return [], None, log
+
+    # ── Contrainte ⑤ — Corrélation effective (optionnelle) ─────
+    if use_corr_constraint and len(universe) > 2:
+        try:
+            BENCH = {'Unnamed: 0','ANNEE','JOUR','Unnamed: 62','.BRVMCI',
+                     'BRVM30','BRVM PREST','BRVM-PRINC','BRVM-C TR',
+                     'BRVM-CB','BRVM-CD','BRVM-ENER','BRVM-SFIN','BRVM-SPUB','Date'}
+            cours_cl = data["cours"].apply(pd.to_numeric, errors="coerce")
+            ticker_cl = [c for c in cours_cl.columns if c not in BENCH]
+            ret_cl = cours_cl[ticker_cl].tail(window).ffill().pct_change()\
+                              .clip(-0.20, 0.30).dropna(how="all")
+
+            avail = [t for t in universe if t in ret_cl.columns]
+            if len(avail) > 3:
+                corr_full = ret_cl[avail].corr()
+
+                # Greedy forward selection : commence par le meilleur scorer
+                # Ajoute le titre suivant qui minimise la corrélation moyenne
+                ranked = [t for t in mf_scores.loc[avail]
+                           .sort_values(ascending=False).index]
+                selected = [ranked[0]]
+
+                for candidate in ranked[1:]:
+                    # Corrélation moyenne du candidat avec les titres déjà sélectionnés
+                    corrs_with = [float(corr_full.loc[candidate, s])
+                                  for s in selected
+                                  if candidate in corr_full.index
+                                  and s in corr_full.columns]
+                    avg_new = np.mean(corrs_with) if corrs_with else 0
+
+                    if avg_new <= max_avg_corr:
+                        selected.append(candidate)
+
+                # Garder au moins 3 titres
+                if len(selected) >= 3:
+                    universe = selected
+
+        except Exception:
+            pass  # En cas d'erreur : garder l'univers tel quel
+
+        log.append(("⑤ Corrélation effective", len(universe), universe))
+
+    if len(universe) == 0:
+        return [], None, log
+
+    # ── Pondération finale ─────────────────────────────────────
     if use_markowitz:
         weights = optimize_markowitz(mf_scores, universe, data["cours"],
                                      window=window, risk_aversion=risk_aversion,
@@ -2803,6 +2892,53 @@ with t7:
             else:
                 mf_weight,risk_aversion,min_w,max_w = 0.5,2.0,0.0,1.0
 
+            # ── Contraintes optionnelles ④ et ⑤ ──────────────────
+            st.markdown("---")
+            st.markdown("**⚙️ Contraintes optionnelles de diversification**")
+            st.caption("Ces contraintes s'appliquent après les filtres de base "
+                       "et affinent la construction du portefeuille.")
+
+            copt1, copt2 = st.columns(2)
+
+            with copt1:
+                use_sector_c = st.toggle(
+                    "④ Contrainte sectorielle",
+                    value=False, key="use_sect_c",
+                    help="Limite la concentration maximale dans un seul secteur"
+                )
+                if use_sector_c:
+                    max_sect_pct = st.slider(
+                        "Poids max par secteur (%)", 10, 80, 40, 5,
+                        key="max_sect_pct",
+                        help="Si un secteur dépasse ce seuil après pondération, "
+                             "les titres les moins bien scorés de ce secteur sont retirés"
+                    ) / 100
+                    st.caption(f"Aucun secteur ne dépassera **{max_sect_pct:.0%}** du portefeuille")
+                else:
+                    max_sect_pct = 1.0
+
+            with copt2:
+                use_corr_c = st.toggle(
+                    "⑤ Corrélation effective du portefeuille",
+                    value=False, key="use_corr_c",
+                    help="Sélectionne les titres qui minimisent la corrélation "
+                         "moyenne du portefeuille (greedy forward selection)"
+                )
+                if use_corr_c:
+                    max_avg_corr = st.slider(
+                        "Corrélation moyenne max du portefeuille", 0.1, 0.9, 0.50, 0.05,
+                        key="max_avg_corr",
+                        help="Un titre n'est ajouté que si sa corrélation moyenne "
+                             "avec les titres déjà sélectionnés est ≤ ce seuil"
+                    )
+                    st.caption(f"Corrélation moyenne cible : **≤ {max_avg_corr:.2f}**")
+                else:
+                    max_avg_corr = 1.0
+
+            if not use_sector_c and not use_corr_c:
+                st.info("💡 Pipeline standard (4 filtres) · Activez les contraintes "
+                        "ci-dessus pour enrichir l'optimisation")
+
             if st.button("🚀 Lancer le pipeline", type="primary"):
                 with st.spinner("Optimisation en cours..."):
                     inc,pw,pipeline_log = run_optimization_pipeline(
@@ -2812,6 +2948,10 @@ with t7:
                         use_markowitz=use_mkz, risk_aversion=risk_aversion,
                         mf_weight=mf_weight, min_w=min_w, max_w=max_w,
                         window=int(window_corr),
+                        use_sector_constraint=use_sector_c,
+                        max_sector_pct=max_sect_pct,
+                        use_corr_constraint=use_corr_c,
+                        max_avg_corr=max_avg_corr,
                     )
                 if pw is None or len(pw)==0:
                     st.error("❌ Aucun titre retenu — élargissez les seuils des filtres.")
