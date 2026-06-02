@@ -2062,17 +2062,38 @@ def cluster_tickers(corr_matrix, max_corr=0.70):
     Clustering hiérarchique Ward sur la matrice de corrélations.
     Retourne un dict {ticker: cluster_id} et la liste ordonnée des tickers.
     """
-    from scipy.cluster.hierarchy import linkage, dendrogram, fcluster
+    from scipy.cluster.hierarchy import linkage, fcluster
     from scipy.spatial.distance import squareform
 
+    # Nettoyer la matrice : remplacer NaN par 0, forcer symétrie exacte
+    corr = corr_matrix.copy()
+    corr = corr.fillna(0)
+    corr_vals = corr.values.astype(float)
+
+    # Forcer symétrie parfaite : moyenne des deux triangles
+    corr_sym = (corr_vals + corr_vals.T) / 2
+    np.fill_diagonal(corr_sym, 1.0)
+
+    # Distance = 1 - corrélation, bornée [0, 2]
+    dist = np.clip(1 - corr_sym, 0, 2)
+    np.fill_diagonal(dist, 0.0)
+
+    # Forcer symétrie exacte à la précision flottante
+    dist = (dist + dist.T) / 2
+    np.fill_diagonal(dist, 0.0)
+
     tickers = corr_matrix.columns.tolist()
-    dist    = np.clip(1 - corr_matrix.values, 0, 2)
-    np.fill_diagonal(dist, 0)
-    condensed = squareform(dist)
-    Z         = linkage(condensed, method="ward")
-    labels    = fcluster(Z, t=(1 - max_corr), criterion="distance")
-    # Ordonner les tickers par cluster pour la heatmap
-    order     = np.argsort(labels)
+
+    try:
+        condensed = squareform(dist, checks=False)
+        Z         = linkage(condensed, method="ward")
+        labels    = fcluster(Z, t=(1 - max_corr), criterion="distance")
+    except Exception:
+        # Fallback : un seul cluster
+        labels = np.ones(len(tickers), dtype=int)
+        Z      = None
+
+    order = np.argsort(labels)
     return {tickers[i]: int(labels[i]) for i in range(len(tickers))}, \
            [tickers[i] for i in order], Z
 
