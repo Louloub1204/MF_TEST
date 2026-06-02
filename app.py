@@ -1950,11 +1950,120 @@ def run_backtest(cours_df, factor_results, betas,
     return {"perf": perf, "metrics": mets, "rebal_dates": rebal_dates}
 
 
+def compute_correlation_matrix(cours_df, window=252, min_coverage=0.5):
+    """
+    Matrice de corrélations des rendements sur une fenêtre glissante.
+    Exclut les indices BRVM et les titres avec trop de données manquantes.
+    """
+    BENCH = {'Unnamed: 0','ANNEE','JOUR','Unnamed: 62','.BRVMCI','BRVM30',
+             'BRVM PREST','BRVM-PRINC','BRVM-C TR','BRVM-CB','BRVM-CD',
+             'BRVM-ENER','BRVM-SFIN','BRVM-SPUB','Date'}
+    cours = cours_df.apply(pd.to_numeric, errors="coerce")
+    cols  = [c for c in cours.columns if c not in BENCH]
+    sub   = cours[cols].tail(window).ffill()
+    # Filtre couverture
+    cov   = sub.notna().mean()
+    sub   = sub[cov[cov >= min_coverage].index]
+    ret   = sub.pct_change().clip(-0.20, 0.30).dropna(how="all")
+    return ret.corr()
+
+
+def cluster_tickers(corr_matrix, max_corr=0.70):
+    """
+    Clustering hiérarchique Ward sur la matrice de corrélations.
+    Retourne un dict {ticker: cluster_id} et la liste ordonnée des tickers.
+    """
+    from scipy.cluster.hierarchy import linkage, dendrogram, fcluster
+    from scipy.spatial.distance import squareform
+
+    tickers = corr_matrix.columns.tolist()
+    dist    = np.clip(1 - corr_matrix.values, 0, 2)
+    np.fill_diagonal(dist, 0)
+    condensed = squareform(dist)
+    Z         = linkage(condensed, method="ward")
+    labels    = fcluster(Z, t=(1 - max_corr), criterion="distance")
+    # Ordonner les tickers par cluster pour la heatmap
+    order     = np.argsort(labels)
+    return {tickers[i]: int(labels[i]) for i in range(len(tickers))}, \
+           [tickers[i] for i in order], Z
+
+
+def sector_allocation(weights, sector_map, all_tickers):
+    """
+    Calcule la répartition sectorielle d'un portefeuille.
+    weights : Series {ticker: poids}
+    Retourne Series {secteur: poids_total}
+    """
+    alloc = {}
+    for t, w in weights.items():
+        sec = sector_map.get(t.upper(), "Autre")
+        alloc[sec] = alloc.get(sec, 0) + float(w)
+    return pd.Series(alloc).sort_values(ascending=False)
+
+
+def benchmark_sector_weights(sector_map, cours_df, date=None):
+    """
+    Poids sectoriels du benchmark (BRVM Composite équipondéré).
+    Retourne Series {secteur: poids}
+    """
+    BENCH = {'Unnamed: 0','ANNEE','JOUR','Unnamed: 62','.BRVMCI','BRVM30',
+             'BRVM PREST','BRVM-PRINC','BRVM-C TR','BRVM-CB','BRVM-CD',
+             'BRVM-ENER','BRVM-SFIN','BRVM-SPUB','Date'}
+    cols = [c for c in cours_df.columns if c not in BENCH]
+    # Filtrer les titres avec cours actif
+    if date:
+        sub = cours_df.loc[cours_df.index <= pd.to_datetime(date), cols]
+    else:
+        sub = cours_df[cols]
+    active = sub.tail(5).notna().any()
+    active_tickers = active[active].index.tolist()
+    n = len(active_tickers)
+    if n == 0:
+        return pd.Series()
+    w_each = 1.0 / n
+    alloc  = {}
+    for t in active_tickers:
+        sec = sector_map.get(t.upper(), "Autre")
+        alloc[sec] = alloc.get(sec, 0) + w_each
+    return pd.Series(alloc).sort_values(ascending=False)
+
+
+def sector_performance(cours_df, sector_map, start_date, end_date):
+    """
+    Performance de chaque secteur sur la période (rendement équipondéré).
+    """
+    BENCH = {'Unnamed: 0','ANNEE','JOUR','Unnamed: 62','.BRVMCI','BRVM30',
+             'BRVM PREST','BRVM-PRINC','BRVM-C TR','BRVM-CB','BRVM-CD',
+             'BRVM-ENER','BRVM-SFIN','BRVM-SPUB','Date'}
+    cours = cours_df.apply(pd.to_numeric, errors="coerce")
+    cols  = [c for c in cours.columns if c not in BENCH]
+    sub   = cours[cols]
+    sub   = sub[(sub.index >= pd.to_datetime(start_date)) &
+                (sub.index <= pd.to_datetime(end_date))]
+    sub   = sub.ffill()
+
+    sect_ret = {}
+    for sec in set(sector_map.values()):
+        tickers = [t for t, s in sector_map.items() if s == sec
+                   and t in sub.columns]
+        if not tickers:
+            continue
+        prices  = sub[tickers].dropna(how="all")
+        if len(prices) < 2:
+            continue
+        rets    = prices.pct_change().clip(-0.20, 0.30).mean(axis=1)
+        cumret  = (1 + rets).cumprod()
+        sect_ret[sec] = cumret
+
+    return pd.DataFrame(sect_ret) if sect_ret else pd.DataFrame()
+
+
 # ─── TABS ─────────────────────────────────────────────────────
-t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 = st.tabs([
+t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11 = st.tabs([
     "💰 Value", "🚀 Momentum", "📉 Volatilité", "💸 Dividende",
     "💧 Liquidité", "🔢 Indice MF", "📂 Portefeuille",
-    "📈 Valorisation", "📊 Backtesting", "ℹ️ Données"])
+    "📈 Valorisation", "📊 Backtesting",
+    "🔗 Corrélations & Diversification", "ℹ️ Données"])
 
 # ══ VALUE ══════════════════════════════════════════════════════
 with t1:
@@ -2965,6 +3074,33 @@ with t7:
                     st.info("☪️ Aucun titre Charia compatible dans le portefeuille cible. "
                             "Élargissez les filtres ou chargez le fichier de screening.")
 
+            # ── Concentration sectorielle du portefeuille ──────
+            if SECTOR_MAP:
+                st.markdown("---")
+                st.markdown("**🏭 Concentration sectorielle du portefeuille**")
+                sect_pf = sector_allocation(pw, SECTOR_MAP, data["tickers"])
+                sect_bm = benchmark_sector_weights(SECTOR_MAP, data["cours"])
+                all_s   = sorted(set(sect_pf.index) | set(sect_bm.index))
+
+                fig_sp2 = go.Figure()
+                fig_sp2.add_trace(go.Bar(
+                    name="Portefeuille", x=all_s,
+                    y=[sect_pf.get(s,0)*100 for s in all_s],
+                    marker_color="#3b82f6", opacity=0.85))
+                fig_sp2.add_trace(go.Bar(
+                    name="BRVM Composite", x=all_s,
+                    y=[sect_bm.get(s,0)*100 for s in all_s],
+                    marker_color="#f59e0b", opacity=0.6))
+                fig_sp2.update_layout(barmode="group",
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#94a3b8", family="JetBrains Mono"), height=320,
+                    legend=dict(orientation="h", y=1.08, bgcolor="rgba(0,0,0,0)"),
+                    margin=dict(l=10,r=10,t=40,b=80),
+                    xaxis=dict(gridcolor="#1e2d45", tickangle=-30),
+                    yaxis=dict(gridcolor="#1e2d45", ticksuffix="%"))
+                st.plotly_chart(fig_sp2, width="stretch")
+                st.caption("Pour une analyse complète → onglet 🔗 Corrélations & Diversification")
+
 
 # ══ VALORISATION ═══════════════════════════════════════════════
 with t8:
@@ -3606,8 +3742,257 @@ with t9:
                                buf_bt.getvalue(), "backtesting_BRVM.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-# ══ DONNÉES ════════════════════════════════════════════════════
+# ══ CORRÉLATIONS & DIVERSIFICATION ════════════════════════════
 with t10:
+    st.markdown(
+        "<span class='pill'>Analyse</span>"
+        "<p class='sh'>Corrélations & Diversification Sectorielle</p>",
+        unsafe_allow_html=True)
+    st.markdown("""<div class='fbox'>
+    Matrice de corrélations · Clustering des titres · Concentration sectorielle · Performance par secteur<br>
+    Basé sur l'historique des cours et la classification BRVM officielle (sectors.json)
+    </div>""", unsafe_allow_html=True)
+
+    if not data:
+        st.info("👈 Chargez d'abord le fichier de données (sidebar).")
+    else:
+        c_min = data["cours"].index.min().date()
+        c_max = data["cours"].index.max().date()
+
+        # ── Paramètres ─────────────────────────────────────────
+        st.markdown("**⚙️ Paramètres**")
+        cp1, cp2, cp3 = st.columns(3)
+        with cp1:
+            corr_window = st.slider("Fenêtre corrélations (jours)", 60, 504, 252, 21,
+                                    key="corr_win")
+        with cp2:
+            max_corr_cl = st.slider("Seuil clustering (corrélation max)", 0.3, 0.95, 0.70, 0.05,
+                                    key="corr_cl")
+        with cp3:
+            perf_start = st.date_input("Début perf. sectorielle",
+                value=max(c_min, min(c_max, pd.Timestamp("2020-01-01").date())),
+                min_value=c_min, max_value=c_max, key="perf_start")
+
+        if st.button("🔗 Calculer les analyses", type="primary"):
+            with st.spinner("Calcul des corrélations et diversification..."):
+                corr_mat   = compute_correlation_matrix(data["cours"], corr_window)
+                clusters, ordered_tickers, Z = cluster_tickers(corr_mat, max_corr_cl)
+                sect_perf  = sector_performance(
+                    data["cours"], SECTOR_MAP, perf_start, c_max)
+            st.session_state.corr_mat  = corr_mat
+            st.session_state.clusters  = clusters
+            st.session_state.ord_tick  = ordered_tickers
+            st.session_state.sect_perf = sect_perf
+            st.success(f"✅ Matrice {corr_mat.shape[0]}×{corr_mat.shape[0]} · "
+                       f"{len(set(clusters.values()))} clusters · "
+                       f"{len(sect_perf.columns) if not sect_perf.empty else 0} secteurs")
+
+        if "corr_mat" in st.session_state and st.session_state.corr_mat is not None:
+            corr_mat = st.session_state.corr_mat
+            clusters = st.session_state.clusters
+            ordered  = st.session_state.ord_tick
+            sect_perf= st.session_state.sect_perf
+
+            # ── 1. Heatmap corrélations ────────────────────────
+            st.markdown("---")
+            st.markdown("**🌡️ Matrice de corrélations des rendements**")
+            st.caption(f"Fenêtre : {corr_window} jours · "
+                       f"Rouge = corrélation positive · Bleu = corrélation négative")
+
+            # Réordonner par cluster pour regrouper les titres similaires
+            ord_valid = [t for t in ordered if t in corr_mat.index]
+            corr_ord  = corr_mat.loc[ord_valid, ord_valid]
+
+            # Ajouter labels de cluster
+            cl_labels = [f"{t}\n(C{clusters.get(t,'?')})" for t in ord_valid]
+
+            fig_hm = go.Figure(go.Heatmap(
+                z=corr_ord.values,
+                x=cl_labels, y=cl_labels,
+                colorscale=[[0,"#3b82f6"],[0.5,"#1e2d45"],[1,"#ef4444"]],
+                zmid=0, zmin=-1, zmax=1,
+                text=[[f"{v:.2f}" for v in row] for row in corr_ord.values],
+                texttemplate="%{text}",
+                textfont=dict(size=7),
+                hovertemplate="<b>%{y} × %{x}</b><br>Corrélation : %{z:.3f}<extra></extra>",
+                colorbar=dict(title="ρ", thickness=12),
+            ))
+            n_t = len(ord_valid)
+            fig_hm.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#94a3b8", family="JetBrains Mono", size=8),
+                height=max(500, n_t * 20 + 100),
+                margin=dict(l=100, r=20, t=40, b=100),
+                xaxis=dict(tickangle=-45),
+            )
+            st.plotly_chart(fig_hm, width="stretch")
+
+            # ── 2. Clustering ──────────────────────────────────
+            st.markdown("---")
+            st.markdown("**🔵 Clusters de titres corrélés**")
+            st.caption("Titres dans le même cluster évoluent de manière similaire → "
+                       "en conserver un seul améliore la diversification")
+
+            n_clusters = max(clusters.values()) if clusters else 0
+            CLUST_CLRS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6",
+                          "#06b6d4","#ec4899","#84cc16","#f97316","#a855f7"]
+
+            # Grille de clusters
+            cluster_groups = {}
+            for t, c in clusters.items():
+                cluster_groups.setdefault(c, []).append(t)
+
+            cols_cl = st.columns(min(4, n_clusters))
+            for i, (cl_id, members) in enumerate(sorted(cluster_groups.items())):
+                clr = CLUST_CLRS[i % len(CLUST_CLRS)]
+                with cols_cl[i % len(cols_cl)]:
+                    members_str = " · ".join(sorted(members))
+                    # Corrélation intra-cluster
+                    if len(members) > 1:
+                        sub_corr = corr_mat.loc[
+                            [m for m in members if m in corr_mat.index],
+                            [m for m in members if m in corr_mat.index]
+                        ]
+                        # Moyenne des corrélations hors diagonale
+                        mask = ~np.eye(len(sub_corr), dtype=bool)
+                        intra = sub_corr.values[mask].mean() if mask.any() else 1.0
+                        intra_str = f"ρ intra = {intra:.2f}"
+                    else:
+                        intra_str = "titre unique"
+                    st.markdown(
+                        f"<div style='background:#161d2e;border-left:3px solid {clr};"
+                        f"border-radius:6px;padding:10px;margin-bottom:8px;'>"
+                        f"<div style='color:{clr};font-weight:700;font-size:11px;'>"
+                        f"Cluster {cl_id} · {len(members)} titre(s) · {intra_str}</div>"
+                        f"<div style='color:#94a3b8;font-size:10px;margin-top:4px;'>"
+                        f"{members_str}</div></div>",
+                        unsafe_allow_html=True
+                    )
+
+            # ── 3. Concentration sectorielle ───────────────────
+            st.markdown("---")
+            st.markdown("**🏭 Concentration sectorielle**")
+
+            # Portefeuille actuel si disponible
+            pw_current = st.session_state.pw
+            if pw_current is not None and not pw_current.empty:
+                sect_pf = sector_allocation(pw_current, SECTOR_MAP,
+                                            data["tickers"])
+                sect_bm = benchmark_sector_weights(SECTOR_MAP, data["cours"])
+
+                # Aligner les secteurs
+                all_sects = sorted(set(sect_pf.index) | set(sect_bm.index))
+                pf_vals = [sect_pf.get(s, 0) for s in all_sects]
+                bm_vals = [sect_bm.get(s, 0) for s in all_sects]
+
+                fig_sect = go.Figure()
+                fig_sect.add_trace(go.Bar(
+                    name="Portefeuille MF", x=all_sects, y=[v*100 for v in pf_vals],
+                    marker_color="#3b82f6", opacity=0.85,
+                    text=[f"{v*100:.1f}%" for v in pf_vals],
+                    textposition="outside", textfont=dict(size=9)
+                ))
+                fig_sect.add_trace(go.Bar(
+                    name="BRVM Composite", x=all_sects, y=[v*100 for v in bm_vals],
+                    marker_color="#f59e0b", opacity=0.6,
+                    text=[f"{v*100:.1f}%" for v in bm_vals],
+                    textposition="outside", textfont=dict(size=9)
+                ))
+                fig_sect.update_layout(
+                    barmode="group",
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#94a3b8", family="JetBrains Mono"), height=380,
+                    legend=dict(orientation="h", y=1.08, bgcolor="rgba(0,0,0,0)"),
+                    margin=dict(l=10, r=10, t=50, b=80),
+                    xaxis=dict(gridcolor="#1e2d45", tickangle=-30),
+                    yaxis=dict(gridcolor="#1e2d45", ticksuffix="%",
+                               title="Poids (%)"),
+                )
+                st.plotly_chart(fig_sect, width="stretch")
+
+                # Tableau écarts surpoids/sous-poids
+                st.markdown("**Écarts vs benchmark (surpoids / sous-poids)**")
+                ecarts = []
+                for s in all_sects:
+                    pf_w = sect_pf.get(s, 0) * 100
+                    bm_w = sect_bm.get(s, 0) * 100
+                    diff = pf_w - bm_w
+                    ecarts.append({
+                        "Secteur":  s,
+                        "Ptf MF (%)":  f"{pf_w:.1f}%",
+                        "Benchmark (%)": f"{bm_w:.1f}%",
+                        "Écart":   f"{'▲' if diff>0.5 else '▼' if diff<-0.5 else '≈'} "
+                                   f"{diff:+.1f}%",
+                        "_diff": diff,
+                    })
+                df_ecarts = pd.DataFrame(ecarts).sort_values("_diff",ascending=False)
+                st.dataframe(df_ecarts.drop("_diff",axis=1),
+                             width="stretch", hide_index=True)
+            else:
+                st.info("ℹ️ Construisez d'abord un portefeuille (onglet 📂) "
+                        "pour voir la concentration sectorielle.")
+
+            # ── 4. Performance sectorielle ─────────────────────
+            st.markdown("---")
+            st.markdown("**📈 Performance sectorielle historique**")
+
+            if not sect_perf.empty:
+                fig_sp = go.Figure()
+                SECT_CLRS = ["#3b82f6","#10b981","#f59e0b","#ef4444",
+                             "#8b5cf6","#06b6d4","#ec4899"]
+                for i, col in enumerate(sect_perf.columns):
+                    final_ret = (sect_perf[col].iloc[-1] - 1) * 100
+                    fig_sp.add_trace(go.Scatter(
+                        x=sect_perf.index, y=sect_perf[col] * 100 - 100,
+                        name=f"{col} ({final_ret:+.1f}%)",
+                        line=dict(color=SECT_CLRS[i % len(SECT_CLRS)], width=2),
+                        hovertemplate=f"<b>{col}</b><br>"
+                                      f"%{{x|%d/%m/%Y}}<br>"
+                                      f"Perf : %{{y:+.2f}}%<extra></extra>"
+                    ))
+                fig_sp.add_hline(y=0, line_width=1, line_color="#475569")
+                fig_sp.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#94a3b8", family="JetBrains Mono"), height=420,
+                    legend=dict(orientation="h", y=1.05, bgcolor="rgba(0,0,0,0)",
+                                font=dict(size=10)),
+                    margin=dict(l=10, r=10, t=50, b=40),
+                    xaxis=dict(gridcolor="#1e2d45"),
+                    yaxis=dict(gridcolor="#1e2d45", ticksuffix="%",
+                               title="Performance cumulée (%)"),
+                    hovermode="x unified",
+                )
+                st.plotly_chart(fig_sp, width="stretch")
+
+                # Tableau perf annuelle par secteur
+                st.markdown("**Rendements annuels par secteur (%)**")
+                ann_sect = {}
+                for col in sect_perf.columns:
+                    yr_ret = sect_perf[col].resample("YE").last().pct_change().dropna() * 100
+                    ann_sect[col] = yr_ret
+                ann_df = pd.DataFrame(ann_sect)
+                ann_df.index = ann_df.index.year
+                st.dataframe(ann_df.round(2).style.format("{:+.2f}%"),
+                             width="stretch")
+
+                # Export
+                buf_cd = io.BytesIO()
+                with pd.ExcelWriter(buf_cd, engine="openpyxl") as writer:
+                    corr_mat.round(4).to_excel(writer, sheet_name="Corrélations")
+                    sect_perf.to_excel(writer, sheet_name="Perf sectorielle")
+                    if pw_current is not None:
+                        df_ecarts.drop("_diff",axis=1).to_excel(
+                            writer, sheet_name="Concentration sectorielle", index=False)
+                st.download_button(
+                    "⬇️ Exporter analyses (Excel)", buf_cd.getvalue(),
+                    "correlations_diversification_BRVM.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                st.warning("Données insuffisantes pour calculer la performance sectorielle.")
+
+# ══ DONNÉES ════════════════════════════════════════════════════
+with t11:
     st.markdown("<span class='pill'>Sources</span><p class='sh'>Aperçu des données chargées</p>", unsafe_allow_html=True)
     c1,c2,c3 = st.columns(3)
     c1.metric("Observations cours", len(data["cours"]))
