@@ -1841,6 +1841,493 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
 
+    # ── Rapport de résultats ───────────────────────────────────
+    st.markdown("---")
+    st.markdown("**📋 Rapport de résultats**")
+
+    def generate_rapport_pdf(data, factor_results, mf_scores, pw,
+                             betas, charia_results):
+        """
+        Génère un PDF de rapport complet avec :
+        - Page de garde CGF Gestion
+        - Définition et résultats de chaque facteur
+        - Classement MF et méthode de calcul
+        - Allocation du portefeuille cible
+        - Portefeuille Charia si disponible
+        """
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.lib.units import cm
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+            PageBreak, HRFlowable, KeepTogether
+        )
+        import datetime, io as _io
+
+        buf = _io.BytesIO()
+        W, H = A4
+        today = datetime.date.today().strftime("%d/%m/%Y")
+
+        # ── Palette couleurs ──────────────────────────────────
+        C_BG    = colors.HexColor("#0b0f1a")
+        C_BLUE  = colors.HexColor("#3b82f6")
+        C_CYAN  = colors.HexColor("#06b6d4")
+        C_GREEN = colors.HexColor("#10b981")
+        C_AMBER = colors.HexColor("#f59e0b")
+        C_TEXT  = colors.HexColor("#1e293b")
+        C_LIGHT = colors.HexColor("#f8fafc")
+        C_GRAY  = colors.HexColor("#64748b")
+        C_LINE  = colors.HexColor("#e2e8f0")
+
+        FACTOR_COLORS = {
+            "Value":      colors.HexColor("#3b82f6"),
+            "Momentum":   colors.HexColor("#8b5cf6"),
+            "Volatilité": colors.HexColor("#10b981"),
+            "Dividende":  colors.HexColor("#f59e0b"),
+            "Liquidité":  colors.HexColor("#06b6d4"),
+        }
+
+        FACTOR_ICONS = {
+            "Value":      "Value",
+            "Momentum":   "Momentum",
+            "Volatilite": "Volatilite",
+            "Dividende":  "Dividende",
+            "Liquidite":  "Liquidite",
+        }
+
+        FACTOR_DEFINITIONS = {
+            "Value": (
+                "Le facteur Value identifie les titres sous-évalués par le marché "
+                "en comparant leur prix à leurs fondamentaux financiers.",
+                [
+                    ("B/P",    "Valeur comptable / Cours",           "10%"),
+                    ("E/P",    "Résultat net / Cours (inverse PER)", "50%"),
+                    ("FCF/P",  "Free Cash-Flow / Cours",             "20%"),
+                    ("CA/P",   "Chiffre d'affaires / Cours",         "10%"),
+                    ("EBIT/EV","Résultat exploitation / Val. entrep.","10%"),
+                ]
+            ),
+            "Momentum": (
+                "Le facteur Momentum capture la persistance des tendances de cours "
+                "en mesurant les rendements moyens sur plusieurs horizons temporels.",
+                [
+                    ("Rdt Journalier",    "Rendement moyen sur 1 jour",       "16.67%"),
+                    ("Rdt Hebdomadaire",  "Rendement moyen sur 1 semaine",     "16.67%"),
+                    ("Rdt Mensuel",       "Rendement moyen sur 1 mois",        "16.67%"),
+                    ("Rdt Trimestriel",   "Rendement moyen sur 3 mois",        "16.67%"),
+                    ("Rdt Semestriel",    "Rendement moyen sur 6 mois",        "16.67%"),
+                    ("Rdt Annuel",        "Rendement moyen sur 12 mois",       "16.67%"),
+                ]
+            ),
+            "Volatilite": (
+                "Le facteur Volatilité favorise les titres à faible risque en mesurant "
+                "l'écart-type des rendements. L'indice est calculé de façon inversée "
+                "(min/valeur) pour récompenser la faible volatilité.",
+                [("Ecart-type", "Ecart-type des rendements journaliers", "100%")]
+            ),
+            "Dividende": (
+                "Le facteur Dividende identifie les titres offrant un rendement "
+                "locatif attractif, mesuré par le ratio dividende / cours.",
+                [("Dividend Yield", "Dividende par action / Cours", "100%")]
+            ),
+            "Liquidite": (
+                "Le facteur Liquidité favorise les titres facilement négociables "
+                "sur le marché BRVM, mesurée par le volume moyen transigé.",
+                [("Volume moyen", "Volume moyen de transactions", "100%")]
+            ),
+        }
+
+        doc = SimpleDocTemplate(
+            buf, pagesize=A4,
+            topMargin=1.8*cm, bottomMargin=1.8*cm,
+            leftMargin=2*cm, rightMargin=2*cm
+        )
+
+        # ── Styles ────────────────────────────────────────────
+        SS = getSampleStyleSheet()
+        def S(name, **kw):
+            base = SS.get(name, SS["Normal"])
+            return ParagraphStyle(name+"_custom", parent=base, **kw)
+
+        sTitle    = S("Title",    fontSize=22, textColor=C_BLUE,
+                      fontName="Helvetica-Bold", alignment=TA_CENTER, spaceAfter=6)
+        sSubtitle = S("Normal",   fontSize=12, textColor=C_GRAY,
+                      fontName="Helvetica", alignment=TA_CENTER, spaceAfter=4)
+        sH1       = S("Heading1", fontSize=14, textColor=C_BLUE,
+                      fontName="Helvetica-Bold", spaceBefore=14, spaceAfter=6)
+        sH2       = S("Heading2", fontSize=11, textColor=C_TEXT,
+                      fontName="Helvetica-Bold", spaceBefore=8, spaceAfter=4)
+        sBody     = S("Normal",   fontSize=9,  textColor=C_TEXT,
+                      fontName="Helvetica", leading=14, spaceAfter=4,
+                      alignment=TA_JUSTIFY)
+        sCap      = S("Normal",   fontSize=8,  textColor=C_GRAY,
+                      fontName="Helvetica-Oblique", spaceAfter=2)
+        sCell     = S("Normal",   fontSize=8,  textColor=C_TEXT,
+                      fontName="Helvetica", leading=11)
+        sCellB    = S("Normal",   fontSize=8,  textColor=C_TEXT,
+                      fontName="Helvetica-Bold", leading=11)
+        sCellC    = S("Normal",   fontSize=8,  textColor=C_BLUE,
+                      fontName="Helvetica-Bold", leading=11)
+
+        def table_style(header_color=C_BLUE):
+            return TableStyle([
+                ("BACKGROUND",  (0,0), (-1,0),  header_color),
+                ("TEXTCOLOR",   (0,0), (-1,0),  colors.white),
+                ("FONTNAME",    (0,0), (-1,0),  "Helvetica-Bold"),
+                ("FONTSIZE",    (0,0), (-1,0),  8),
+                ("ALIGN",       (0,0), (-1,-1), "LEFT"),
+                ("VALIGN",      (0,0), (-1,-1), "MIDDLE"),
+                ("ROWBACKGROUNDS",(0,1),(-1,-1),[C_LIGHT, colors.white]),
+                ("GRID",        (0,0), (-1,-1), 0.3, C_LINE),
+                ("LEFTPADDING", (0,0), (-1,-1), 6),
+                ("RIGHTPADDING",(0,0), (-1,-1), 6),
+                ("TOPPADDING",  (0,0), (-1,-1), 4),
+                ("BOTTOMPADDING",(0,0),(-1,-1), 4),
+                ("FONTSIZE",    (0,1), (-1,-1), 8),
+            ])
+
+        story = []
+
+        # ══════════════════════════════════════════════════════
+        # PAGE DE GARDE
+        # ══════════════════════════════════════════════════════
+        story += [
+            Spacer(1, 2*cm),
+            Paragraph("CGF GESTION", S("Title", fontSize=28, textColor=C_BLUE,
+                       fontName="Helvetica-Bold", alignment=TA_CENTER)),
+            Spacer(1, 0.3*cm),
+            HRFlowable(width="80%", thickness=2, color=C_BLUE, spaceAfter=8),
+            Spacer(1, 0.5*cm),
+            Paragraph("RAPPORT D'ALLOCATION MULTIFACTORIELLE", sTitle),
+            Paragraph("Bourse Régionale des Valeurs Mobilières (BRVM)", sSubtitle),
+            Spacer(1, 0.3*cm),
+            Paragraph(f"Généré le {today}", sCap),
+            Spacer(1, 1.5*cm),
+        ]
+
+        # Bloc résumé
+        n_tickers = len(data.get("tickers", [])) if data else 0
+        n_factors = sum(1 for v in factor_results.values() if v is not None)
+        n_ptf     = len(pw) if pw is not None and not pw.empty else 0
+        n_charia  = len([t for t,r in charia_results.items()
+                         if r and r.get("compatible")]) if charia_results else 0
+
+        summary_data = [
+            ["Univers BRVM", "Facteurs calculés",
+             "Titres en portefeuille", "Titres Charia compatibles"],
+            [str(n_tickers), str(n_factors), str(n_ptf), str(n_charia)],
+        ]
+        t_sum = Table(summary_data, colWidths=[4*cm]*4)
+        t_sum.setStyle(TableStyle([
+            ("BACKGROUND",   (0,0),(-1,0), C_BLUE),
+            ("TEXTCOLOR",    (0,0),(-1,0), colors.white),
+            ("FONTNAME",     (0,0),(-1,0), "Helvetica-Bold"),
+            ("FONTSIZE",     (0,0),(-1,0), 8),
+            ("BACKGROUND",   (0,1),(-1,1), colors.HexColor("#dbeafe")),
+            ("FONTNAME",     (0,1),(-1,1), "Helvetica-Bold"),
+            ("FONTSIZE",     (0,1),(-1,1), 16),
+            ("TEXTCOLOR",    (0,1),(-1,1), C_BLUE),
+            ("ALIGN",        (0,0),(-1,-1),"CENTER"),
+            ("VALIGN",       (0,0),(-1,-1),"MIDDLE"),
+            ("GRID",         (0,0),(-1,-1), 0.3, C_LINE),
+            ("TOPPADDING",   (0,0),(-1,-1), 8),
+            ("BOTTOMPADDING",(0,0),(-1,-1), 8),
+        ]))
+        story += [t_sum, Spacer(1, 1*cm)]
+
+        # β actifs
+        if betas:
+            beta_data = [["Facteur", "Beta (b_i)", "Contribution"],
+                         *[[k, f"{v:.2f}", f"{v*100:.1f}%"]
+                           for k,v in betas.items()]]
+            t_beta = Table(beta_data, colWidths=[5*cm, 4*cm, 4*cm])
+            t_beta.setStyle(table_style(C_CYAN))
+            story += [
+                Paragraph("Pondérations des facteurs (b_i)", sH2),
+                t_beta,
+            ]
+
+        story.append(PageBreak())
+
+        # ══════════════════════════════════════════════════════
+        # SECTION 1 — FACTEURS
+        # ══════════════════════════════════════════════════════
+        story.append(Paragraph("1. ANALYSE FACTORIELLE", sH1))
+        story.append(HRFlowable(width="100%", thickness=1,
+                                color=C_LINE, spaceAfter=8))
+        story.append(Paragraph(
+            "La stratégie multifactorielle repose sur l'exploitation de cinq facteurs "
+            "de risque et de performance. Chaque facteur est calculé comme une "
+            "combinaison pondérée de métriques financières et de marché, normalisées "
+            "par la valeur maximale observée dans l'univers BRVM à la date de calcul "
+            "(formule Note Technique CGF Gestion, 10/05/2024).", sBody))
+        story.append(Spacer(1, 0.3*cm))
+
+        FACTOR_ORDER = ["Value","Momentum","Volatilite","Dividende","Liquidite"]
+        FACTOR_NAMES_MAP = {
+            "Value":"Value","Momentum":"Momentum",
+            "Volatilite":"Volatilité","Dividende":"Dividende","Liquidite":"Liquidité"
+        }
+
+        for fkey in FACTOR_ORDER:
+            fname = FACTOR_NAMES_MAP[fkey]
+            fcolor= FACTOR_COLORS.get(fname, C_BLUE)
+            defn, metrics = FACTOR_DEFINITIONS[fkey]
+
+            # En-tête facteur
+            story.append(KeepTogether([
+                Paragraph(fname, S("Heading2", fontSize=12,
+                          textColor=fcolor, fontName="Helvetica-Bold",
+                          spaceBefore=10, spaceAfter=4)),
+                Paragraph(defn, sBody),
+                Spacer(1, 0.2*cm),
+            ]))
+
+            # Tableau des métriques
+            m_data = [["Métrique", "Description", "Poids"],
+                      *[[m[0], m[1], m[2]] for m in metrics]]
+            t_m = Table(m_data, colWidths=[3.5*cm, 9*cm, 2*cm])
+            t_m.setStyle(table_style(fcolor))
+            story.append(t_m)
+
+            # Résultats si disponibles
+            fr_key = fname
+            if fr_key in factor_results and factor_results[fr_key] is not None:
+                df_f = factor_results[fr_key]
+                sc_cols = [c for c in df_f.columns if "Score" in c]
+                if sc_cols:
+                    top10 = df_f[sc_cols[0]].nlargest(10)
+                    res_data = [["Rang", "Ticker", f"Score {fname}"]] + \
+                               [[str(i+1), t, f"{v:.6f}"]
+                                for i, (t, v) in enumerate(top10.items())]
+                    t_res = Table(res_data, colWidths=[1.5*cm, 4*cm, 9*cm])
+                    t_res.setStyle(table_style(fcolor))
+                    story += [
+                        Spacer(1, 0.2*cm),
+                        Paragraph(f"Top 10 — Scores {fname}", sCap),
+                        t_res,
+                    ]
+            story.append(Spacer(1, 0.4*cm))
+
+        story.append(PageBreak())
+
+        # ══════════════════════════════════════════════════════
+        # SECTION 2 — INDICE MULTIFACTORIEL
+        # ══════════════════════════════════════════════════════
+        story.append(Paragraph("2. INDICE MULTIFACTORIEL (MF)", sH1))
+        story.append(HRFlowable(width="100%", thickness=1,
+                                color=C_LINE, spaceAfter=8))
+        story.append(Paragraph(
+            "L'indice multifactoriel MF(t,T) est calculé comme la somme pondérée "
+            "des indices factoriels : MF(t,T) = somme des b_i x F_i(t,T) "
+            "pour i allant de 1 a 7. Les b_i représentent les poids "
+            "attribués à chaque facteur.", sBody))
+
+        if mf_scores is not None and not mf_scores.empty:
+            top20 = mf_scores.head(20)
+            n_total = len(mf_scores)
+            mf_data = [["Rang", "Ticker", "Score MF", "Centile"]] + \
+                      [[str(i+1), t, f"{v:.6f}",
+                        f"Top {(i+1)/n_total*100:.0f}%"]
+                       for i, (t, v) in enumerate(top20.items())]
+            t_mf = Table(mf_data, colWidths=[1.5*cm, 3*cm, 7*cm, 3*cm])
+            t_mf.setStyle(table_style(C_BLUE))
+            story += [
+                Paragraph("Classement MF — Top 20 titres", sH2),
+                t_mf,
+                Spacer(1, 0.3*cm),
+                Paragraph(
+                    f"Univers complet : {n_total} titres classés. "
+                    "Formule : alpha(T,t) = (n - r(T,t) + 1) / (n x (n+1) / 2)",
+                    sCap),
+            ]
+        else:
+            story.append(Paragraph(
+                "Score MF non encore calculé — lancez l'Indice MF dans l'application.",
+                sBody))
+
+        story.append(PageBreak())
+
+        # ══════════════════════════════════════════════════════
+        # SECTION 3 — PORTEFEUILLE CIBLE
+        # ══════════════════════════════════════════════════════
+        story.append(Paragraph("3. PORTEFEUILLE CIBLE", sH1))
+        story.append(HRFlowable(width="100%", thickness=1,
+                                color=C_LINE, spaceAfter=8))
+        story.append(Paragraph(
+            "Le portefeuille cible est construit en appliquant la formule de "
+            "pondération par rang MF : alpha(T,t) = (n - r(T,t) + 1) / (n x (n+1) / 2). "
+            "Les titres sont sélectionnés après application des filtres "
+            "de liquidité, de score MF et de corrélation.", sBody))
+
+        if pw is not None and not pw.empty and mf_scores is not None:
+            ranks = mf_scores.reindex(pw.index).rank(
+                ascending=False, method="min")
+            ptf_data = [["Rang MF", "Ticker", "Secteur",
+                         "Score MF", "Poids alpha", "Poids (%)"]]
+            for t, w in pw.items():
+                rk = int(ranks.get(t, 0)) if not pd.isna(ranks.get(t, 0)) else "-"
+                sc = f"{mf_scores.get(t, 0):.6f}" \
+                     if t in mf_scores.index else "-"
+                sec = SECTOR_MAP.get(t.upper(), "Autre") if SECTOR_MAP else "-"
+                # Charia label
+                ch = charia_results.get(t, {})
+                ch_ok = "oui" if ch.get("compatible") else \
+                        ("exclu" if ch.get("excluded") else "non")
+                ptf_data.append([str(rk), t, sec[:20],
+                                  sc, f"{w:.6f}", f"{w*100:.2f}%"])
+
+            t_ptf = Table(ptf_data,
+                          colWidths=[1.5*cm, 2.5*cm, 4.5*cm, 4*cm, 2.5*cm, 1.5*cm])
+            t_ptf.setStyle(table_style(C_BLUE))
+            story += [
+                Paragraph(f"Allocation — {len(pw)} titres retenus", sH2),
+                t_ptf,
+                Spacer(1, 0.3*cm),
+                Paragraph(
+                    f"Somme des poids : {pw.sum():.6f} · "
+                    f"Titre en tête : {pw.index[0]} ({pw.iloc[0]*100:.2f}%) · "
+                    f"Titre en queue : {pw.index[-1]} ({pw.iloc[-1]*100:.2f}%)",
+                    sCap),
+            ]
+        else:
+            story.append(Paragraph(
+                "Portefeuille non encore construit — lancez le pipeline "
+                "dans l'onglet Portefeuille.",
+                sBody))
+
+        # ══════════════════════════════════════════════════════
+        # SECTION 4 — SCREENING CHARIA
+        # ══════════════════════════════════════════════════════
+        if charia_results:
+            story.append(PageBreak())
+            story.append(Paragraph("4. SCREENING CHARIATIQUE", sH1))
+            story.append(HRFlowable(width="100%", thickness=1,
+                                    color=C_LINE, spaceAfter=8))
+            story.append(Paragraph(
+                "Le screening Charia évalue la conformité de chaque titre selon "
+                "4 standards islamiques reconnus : DJIM, FTSE, S&P et AAOIFI/Malaisie. "
+                "Un titre est considéré compatible s'il qualifie sur au moins 3 "
+                "standards sur 4. Les banques conventionnelles et les sociétés "
+                "opérant dans des secteurs illicites sont automatiquement exclues.",
+                sBody))
+
+            compat   = [(t, r) for t, r in charia_results.items()
+                        if r and r.get("compatible")]
+            excluded = [(t, r) for t, r in charia_results.items()
+                        if r and r.get("excluded")]
+            non_compat = [(t, r) for t, r in charia_results.items()
+                          if r and not r.get("compatible") and not r.get("excluded")]
+
+            # Résumé Charia
+            ch_sum_data = [
+                ["Compatibles", "Exclus (secteur)", "Non conformes", "Total"],
+                [str(len(compat)), str(len(excluded)),
+                 str(len(non_compat)), str(len(charia_results))],
+            ]
+            t_ch_sum = Table(ch_sum_data, colWidths=[4*cm]*4)
+            t_ch_sum.setStyle(TableStyle([
+                ("BACKGROUND",   (0,0),(-1,0), C_GREEN),
+                ("TEXTCOLOR",    (0,0),(-1,0), colors.white),
+                ("FONTNAME",     (0,0),(-1,0), "Helvetica-Bold"),
+                ("FONTSIZE",     (0,0),(-1,0), 8),
+                ("BACKGROUND",   (0,1),(-1,1), colors.HexColor("#d1fae5")),
+                ("FONTNAME",     (0,1),(-1,1), "Helvetica-Bold"),
+                ("FONTSIZE",     (0,1),(-1,1), 16),
+                ("TEXTCOLOR",    (0,1),(-1,1), C_GREEN),
+                ("ALIGN",        (0,0),(-1,-1),"CENTER"),
+                ("VALIGN",       (0,0),(-1,-1),"MIDDLE"),
+                ("GRID",         (0,0),(-1,-1), 0.3, C_LINE),
+                ("TOPPADDING",   (0,0),(-1,-1), 8),
+                ("BOTTOMPADDING",(0,0),(-1,-1), 8),
+            ]))
+            story += [t_ch_sum, Spacer(1, 0.4*cm)]
+
+            # Tableau des compatibles
+            if compat:
+                ch_data = [["Ticker", "Standards", "RE/Actif",
+                            "RC/Actif", "RL/Actif"]]
+                for t, r in sorted(compat, key=lambda x: x[0]):
+                    stds = "/".join(
+                        s for s, v in r.get("standards", {}).items()
+                        if v.get("pass"))
+                    rats = r.get("ratios", {})
+                    ch_data.append([
+                        t, stds,
+                        f"{rats.get('RE_actif',0):.3f}" if rats.get('RE_actif') else "-",
+                        f"{rats.get('RC_actif',0):.3f}" if rats.get('RC_actif') else "-",
+                        f"{rats.get('RL_actif',0):.3f}" if rats.get('RL_actif') else "-",
+                    ])
+                t_ch = Table(ch_data,
+                             colWidths=[2.5*cm, 5*cm, 2.5*cm, 2.5*cm, 2.5*cm])
+                t_ch.setStyle(table_style(C_GREEN))
+                story += [
+                    Paragraph("Titres compatibles Charia", sH2),
+                    t_ch,
+                ]
+
+            # Portefeuille Charia si disponible
+            if pw is not None and not pw.empty and mf_scores is not None:
+                charia_tickers = [t for t, r in charia_results.items()
+                                  if r and r.get("compatible")]
+                pw_ch = pw[pw.index.isin(charia_tickers)]
+                if not pw_ch.empty:
+                    story += [Spacer(1, 0.4*cm),
+                              Paragraph("Portefeuille Charia (intersection)",sH2)]
+                    pw_ch_norm = pw_ch / pw_ch.sum()
+                    ch_ptf_data = [["Titre","Poids rebasé (%)"]]
+                    for t, w in pw_ch_norm.items():
+                        ch_ptf_data.append([t, f"{w*100:.2f}%"])
+                    t_ch_ptf = Table(ch_ptf_data, colWidths=[5*cm, 5*cm])
+                    t_ch_ptf.setStyle(table_style(C_GREEN))
+                    story.append(t_ch_ptf)
+
+        # ── Pied de page ──────────────────────────────────────
+        story += [
+            Spacer(1, 1*cm),
+            HRFlowable(width="100%", thickness=0.5, color=C_LINE),
+            Spacer(1, 0.2*cm),
+            Paragraph(
+                f"CGF Gestion · Rapport SMF BRVM · Généré le {today} · "
+                "Note Technique 10/05/2024 · Confidentiel",
+                S("Normal", fontSize=7, textColor=C_GRAY,
+                  alignment=TA_CENTER, fontName="Helvetica-Oblique")),
+        ]
+
+        doc.build(story)
+        buf.seek(0)
+        return buf.read()
+
+    # Bouton rapport
+    if st.button("📋 Générer le rapport PDF", type="primary",
+                 use_container_width=True):
+        with st.spinner("Génération du rapport..."):
+            try:
+                rapport_bytes = generate_rapport_pdf(
+                    data=st.session_state.data,
+                    factor_results=st.session_state.factor_results,
+                    mf_scores=st.session_state.mf_scores,
+                    pw=st.session_state.pw,
+                    betas=betas if data else {},
+                    charia_results=st.session_state.charia_results,
+                )
+                st.session_state.rapport_pdf = rapport_bytes
+                st.success("✅ Rapport généré")
+            except Exception as e:
+                st.error(f"Erreur génération PDF : {e}")
+
+    if "rapport_pdf" in st.session_state and st.session_state.rapport_pdf:
+        today_str = datetime.date.today().strftime("%Y%m%d")
+        st.download_button(
+            label="⬇️ Télécharger le rapport",
+            data=st.session_state.rapport_pdf,
+            file_name=f"Rapport_SMF_BRVM_{today_str}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
+
 # ─── HEADER ───────────────────────────────────────────────────
 st.markdown("""
 <div style='padding:6px 0 20px 0;'>
