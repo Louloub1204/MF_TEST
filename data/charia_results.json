@@ -1,0 +1,446 @@
+{
+  "last_updated": "2026-06-12T12:09:08.902828",
+  "results": {
+    "SAFC": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "BOAN": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "BOABF": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "BNBC": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "BICC": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "BOAC": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "BOAB": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "SGBC": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "ECOC": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "ETI": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "NSBC": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "CBIBF": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "BICB": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "ETIT": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "ORGT": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "BOAM": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "SIBC": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "BOAS": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "STBC": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Secteur illicite — Industrie du tabac",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "LNBB": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Secteur illicite — Jeux de hasard / loterie",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    },
+    "SLBC": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": false,
+      "excluded": true,
+      "raison": "Secteur illicite — Production / distribution de boissons alcoolisées",
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      }
+    }
+  }
+}
