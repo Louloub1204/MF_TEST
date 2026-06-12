@@ -24,6 +24,15 @@ if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
 
 try:
+    from github_storage import (save_smf_data, load_smf_data,
+                                 save_financial_db_github, load_financial_db_github,
+                                 save_charia_results, load_charia_results,
+                                 is_github_configured)
+    GITHUB_STORAGE = True
+except ImportError:
+    GITHUB_STORAGE = False
+
+try:
     from charia_screening import (parse_screening_file as parse_charia,
                                    screen_all_from_fin_data,
                                    get_charia_label,
@@ -1193,10 +1202,34 @@ for k, default in [("sv_val",0.20),("sv_mom",0.20),("sv_vol",0.20),
     if k not in st.session_state:
         st.session_state[k] = default
 
-# Screening Charia
+# ── Chargement persistant depuis GitHub ───────────────────────
+# Au démarrage : on tente de charger les données depuis GitHub
+# Si disponibles → l'utilisateur n'a pas besoin de recharger ses fichiers
+if "github_loaded" not in st.session_state:
+    st.session_state.github_loaded = False
+
+if not st.session_state.github_loaded and GITHUB_STORAGE:
+    with st.spinner("🔄 Chargement des données persistées..."):
+        # 1. Données SMF (cours, nb_titres, dividendes)
+        if st.session_state.data is None:
+            smf_gh = load_smf_data()
+            if smf_gh:
+                st.session_state.data = smf_gh
+                st.session_state.github_loaded = True
+
+        # 2. États financiers
+        if "fin_data" not in st.session_state or not st.session_state.get("fin_data"):
+            fin_gh = load_financial_db_github()
+            if fin_gh:
+                st.session_state.fin_data = fin_gh
+
+        # 3. Charia results (sera complété avec les exclusions fixes ensuite)
+        charia_gh = load_charia_results()
+        if charia_gh:
+            st.session_state["_charia_from_github"] = charia_gh
+
+# Screening Charia — exclusions fixes + données GitHub
 if "charia_results" not in st.session_state:
-    # Initialise avec les exclusions fixes connues (banques + secteurs illicites)
-    # même sans chargement de fichier
     if CHARIA_AVAILABLE:
         from charia_screening import BANK_TICKERS, ILLICIT_SECTOR_TICKERS
         _init_charia = {}
@@ -1214,14 +1247,18 @@ if "charia_results" not in st.session_state:
                 "raison": f"Secteur illicite — {raison}",
                 "standards": {s: {"pass": False} for s in ["DJIM","FTSE","S&P","AAOIFI"]},
             }
-        st.session_state.charia_results = _init_charia
+        # Fusionner avec les données GitHub (les exclusions fixes ont priorité)
+        charia_from_gh = st.session_state.pop("_charia_from_github", {})
+        merged_charia = {**charia_from_gh, **_init_charia}
+        st.session_state.charia_results = merged_charia
     else:
         st.session_state.charia_results = {}
 
 # Valuation DB path
 VALUATION_DB_PATH = "financial_db.json"
 if "fin_data" not in st.session_state:
-    st.session_state.fin_data = load_financial_db(VALUATION_DB_PATH) if VALUATION_AVAILABLE else {}
+    st.session_state.fin_data = load_financial_db(VALUATION_DB_PATH) \
+                                 if VALUATION_AVAILABLE else {}
 
 # ── Chargement de la classification sectorielle ───────────────
 @st.cache_data
@@ -1257,10 +1294,32 @@ with st.sidebar:
 
     uploaded = st.file_uploader("📁 Base_de_données_-_SMF.xlsx",
                                  type=["xlsx","xls"], label_visibility="visible")
+
+    # Indicateur persistance GitHub
+    if GITHUB_STORAGE and is_github_configured():
+        loaded_from_gh = st.session_state.github_loaded
+        if loaded_from_gh:
+            st.caption("☁️ Données chargées depuis GitHub")
+        elif st.session_state.data:
+            st.caption("💾 Données en session · non persistées")
+        else:
+            st.caption("☁️ GitHub configuré · chargement en cours...")
+    else:
+        if not GITHUB_STORAGE:
+            st.caption("⚠️ github_storage.py non trouvé")
+        else:
+            st.caption("⚙️ Configurez GitHub Secrets pour la persistance")
     if uploaded:
         try:
             st.session_state.data = load_data(uploaded.read())
-            st.success(f"✅ {len(st.session_state.data['tickers'])} titres chargés")
+            n_tickers = len(st.session_state.data['tickers'])
+            st.success(f"✅ {n_tickers} titres chargés")
+            # Auto-sauvegarde GitHub
+            if GITHUB_STORAGE and is_github_configured():
+                with st.spinner("💾 Sauvegarde GitHub..."):
+                    ok = save_smf_data(st.session_state.data)
+                st.success("☁️ Données sauvegardées sur GitHub") if ok else \
+                st.warning("⚠️ Sauvegarde GitHub échouée — données disponibles pour cette session")
         except Exception as e:
             st.error(f"Erreur : {e}")
 
@@ -3311,6 +3370,16 @@ with t8:
                 save_financial_db(merged, VALUATION_DB_PATH)
                 st.session_state.fin_data = merged
 
+                # ── Sauvegarde GitHub ──────────────────────────
+                if GITHUB_STORAGE and is_github_configured():
+                    with st.spinner("💾 Sauvegarde états financiers GitHub..."):
+                        ok_fin = save_financial_db_github(merged)
+                        ok_ch  = save_charia_results(st.session_state.charia_results)
+                    if ok_fin:
+                        st.success("☁️ États financiers + Charia sauvegardés sur GitHub")
+                    else:
+                        st.warning("⚠️ Sauvegarde GitHub échouée")
+
                 # ── Screening Charia automatique depuis fin_data ──────
                 if CHARIA_AVAILABLE and nb_titres_tmp:
                     charia_auto = screen_all_from_fin_data(
@@ -3349,6 +3418,10 @@ with t8:
                 n_ok = len(get_charia_compatible_tickers(merged_charia))
                 st.success(f"✅ {len(charia_static)} tickers screenés · "
                            f"☪️ {n_ok} compatibles Charia")
+                # Sauvegarde GitHub
+                if GITHUB_STORAGE and is_github_configured():
+                    with st.spinner("💾 Sauvegarde Charia GitHub..."):
+                        save_charia_results(merged_charia)
 
     with col_db:
         fin_data = st.session_state.fin_data
