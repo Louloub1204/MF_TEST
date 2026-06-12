@@ -2319,6 +2319,7 @@ with st.sidebar:
                 st.error(f"Erreur génération PDF : {e}")
 
     if "rapport_pdf" in st.session_state and st.session_state.rapport_pdf:
+        import datetime
         today_str = datetime.date.today().strftime("%Y%m%d")
         st.download_button(
             label="⬇️ Télécharger le rapport",
