@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-06-12T13:21:19.687034",
+  "last_updated": "2026-06-12T13:21:21.000830",
   "results": {
     "SAFC": {
       "compatible": false,
@@ -65,24 +65,27 @@
       }
     },
     "BNBC": {
-      "compatible": false,
-      "n_standards": 0,
-      "halal_sector": false,
-      "excluded": true,
-      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "compatible": true,
+      "n_standards": 4,
+      "halal_sector": true,
       "standards": {
         "DJIM": {
-          "pass": false
+          "pass": true
         },
         "FTSE": {
-          "pass": false
+          "pass": true
         },
         "S&P": {
-          "pass": false
+          "pass": true
         },
         "AAOIFI": {
-          "pass": false
+          "pass": true
         }
+      },
+      "ratios": {
+        "RE_actif": 0.0192,
+        "RC_actif": 0.2505,
+        "RL_actif": 0.0376
       }
     },
     "BICC": {
