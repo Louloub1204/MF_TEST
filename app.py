@@ -1209,24 +1209,27 @@ if "github_loaded" not in st.session_state:
     st.session_state.github_loaded = False
 
 if not st.session_state.github_loaded and GITHUB_STORAGE:
-    with st.spinner("🔄 Chargement des données persistées..."):
-        # 1. Données SMF (cours, nb_titres, dividendes)
+    # Guard: ne charger qu'une seule fois par session
+    st.session_state.github_loaded = True  # marquer immédiatement pour éviter la boucle
+    try:
+        # 1. Données SMF
         if st.session_state.data is None:
             smf_gh = load_smf_data()
             if smf_gh:
                 st.session_state.data = smf_gh
-                st.session_state.github_loaded = True
 
         # 2. États financiers
-        if "fin_data" not in st.session_state or not st.session_state.get("fin_data"):
+        if not st.session_state.get("fin_data"):
             fin_gh = load_financial_db_github()
             if fin_gh:
                 st.session_state.fin_data = fin_gh
 
-        # 3. Charia results (sera complété avec les exclusions fixes ensuite)
+        # 3. Charia (stocké temporairement, fusionné avec exclusions fixes ensuite)
         charia_gh = load_charia_results()
         if charia_gh:
             st.session_state["_charia_from_github"] = charia_gh
+    except Exception:
+        pass  # silencieux — l'app fonctionne sans persistance
 
 # Screening Charia — exclusions fixes + données GitHub
 if "charia_results" not in st.session_state:
@@ -1314,12 +1317,11 @@ with st.sidebar:
             st.session_state.data = load_data(uploaded.read())
             n_tickers = len(st.session_state.data['tickers'])
             st.success(f"✅ {n_tickers} titres chargés")
-            # Auto-sauvegarde GitHub
+            # Auto-sauvegarde GitHub silencieuse (pas de spinner = pas de rerun)
             if GITHUB_STORAGE and is_github_configured():
-                with st.spinner("💾 Sauvegarde GitHub..."):
-                    ok = save_smf_data(st.session_state.data)
-                st.success("☁️ Données sauvegardées sur GitHub") if ok else \
-                st.warning("⚠️ Sauvegarde GitHub échouée — données disponibles pour cette session")
+                ok = save_smf_data(st.session_state.data)
+                if ok:
+                    st.caption("☁️ Sauvegardé sur GitHub")
         except Exception as e:
             st.error(f"Erreur : {e}")
 
@@ -3370,15 +3372,12 @@ with t8:
                 save_financial_db(merged, VALUATION_DB_PATH)
                 st.session_state.fin_data = merged
 
-                # ── Sauvegarde GitHub ──────────────────────────
+                # Sauvegarde GitHub silencieuse
                 if GITHUB_STORAGE and is_github_configured():
-                    with st.spinner("💾 Sauvegarde états financiers GitHub..."):
-                        ok_fin = save_financial_db_github(merged)
-                        ok_ch  = save_charia_results(st.session_state.charia_results)
+                    ok_fin = save_financial_db_github(merged)
+                    ok_ch  = save_charia_results(st.session_state.charia_results)
                     if ok_fin:
-                        st.success("☁️ États financiers + Charia sauvegardés sur GitHub")
-                    else:
-                        st.warning("⚠️ Sauvegarde GitHub échouée")
+                        st.caption("☁️ États financiers sauvegardés sur GitHub")
 
                 # ── Screening Charia automatique depuis fin_data ──────
                 if CHARIA_AVAILABLE and nb_titres_tmp:
