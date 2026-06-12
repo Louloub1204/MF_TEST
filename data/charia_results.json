@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-06-12T12:09:32.894254",
+  "last_updated": "2026-06-12T12:09:34.135894",
   "results": {
     "SAFC": {
       "compatible": false,
@@ -65,24 +65,27 @@
       }
     },
     "BNBC": {
-      "compatible": false,
-      "n_standards": 0,
-      "halal_sector": false,
-      "excluded": true,
-      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "compatible": true,
+      "n_standards": 4,
+      "halal_sector": true,
       "standards": {
         "DJIM": {
-          "pass": false
+          "pass": true
         },
         "FTSE": {
-          "pass": false
+          "pass": true
         },
         "S&P": {
-          "pass": false
+          "pass": true
         },
         "AAOIFI": {
-          "pass": false
+          "pass": true
         }
+      },
+      "ratios": {
+        "RE_actif": 0.0192,
+        "RC_actif": 0.2505,
+        "RL_actif": 0.0376
       }
     },
     "BICC": {
@@ -444,16 +447,14 @@
     },
     "PALC": {
       "compatible": true,
-      "n_standards": 4,
+      "n_standards": 3,
       "halal_sector": true,
-      "excluded": false,
-      "illicit_ratio": 0.0,
       "standards": {
         "DJIM": {
           "pass": true
         },
         "FTSE": {
-          "pass": true
+          "pass": false
         },
         "S&P": {
           "pass": true
@@ -462,17 +463,10 @@
           "pass": true
         }
       },
-      "annee": 2025,
-      "source": "fin_data",
-      "cap24_source": "actif (fallback)",
-      "cap36_source": "actif (fallback)",
       "ratios": {
-        "RE_actif": 0.0,
-        "RC_actif": 0.0,
-        "RL_actif": 0.0,
-        "RE_cap24": 0.0,
-        "RE_cap36": 0.0,
-        "Rev_fin/CA": 0.0
+        "RE_actif": 0.004,
+        "RC_actif": 0.3931,
+        "RL_actif": 0.0477
       }
     },
     "SOGC": {
@@ -512,8 +506,6 @@
       "compatible": true,
       "n_standards": 4,
       "halal_sector": true,
-      "excluded": false,
-      "illicit_ratio": 0.0,
       "standards": {
         "DJIM": {
           "pass": true
@@ -528,17 +520,10 @@
           "pass": true
         }
       },
-      "annee": 2025,
-      "source": "fin_data",
-      "cap24_source": "actif (fallback)",
-      "cap36_source": "actif (fallback)",
       "ratios": {
         "RE_actif": 0.0,
         "RC_actif": 0.0,
-        "RL_actif": 0.0,
-        "RE_cap24": 0.0,
-        "RE_cap36": 0.0,
-        "Rev_fin/CA": 0.0
+        "RL_actif": 0.0
       }
     },
     "SMBC": {
@@ -578,8 +563,6 @@
       "compatible": true,
       "n_standards": 4,
       "halal_sector": true,
-      "excluded": false,
-      "illicit_ratio": 0.0,
       "standards": {
         "DJIM": {
           "pass": true
@@ -594,124 +577,88 @@
           "pass": true
         }
       },
-      "annee": 2025,
-      "source": "fin_data",
-      "cap24_source": "actif (fallback)",
-      "cap36_source": "actif (fallback)",
       "ratios": {
-        "RE_actif": 0.0,
-        "RC_actif": 0.0,
-        "RL_actif": 0.0,
-        "RE_cap24": 0.0,
-        "RE_cap36": 0.0,
-        "Rev_fin/CA": 0.0
+        "RE_actif": 0.2145,
+        "RC_actif": 0.1502,
+        "RL_actif": 0.1861
       }
     },
     "SNTS": {
-      "compatible": false,
-      "n_standards": 2,
+      "compatible": true,
+      "n_standards": 4,
       "halal_sector": true,
-      "excluded": false,
-      "illicit_ratio": 0.0,
       "standards": {
         "DJIM": {
           "pass": true
         },
         "FTSE": {
-          "pass": false
+          "pass": true
         },
         "S&P": {
-          "pass": false
+          "pass": true
         },
         "AAOIFI": {
           "pass": true
         }
       },
-      "annee": 2025,
-      "source": "fin_data",
-      "cap24_source": "moy CP 2 ans",
-      "cap36_source": "moy CP 2 ans",
       "ratios": {
-        "RE_actif": 0.2477,
-        "RC_actif": 0.0,
-        "RL_actif": 0.3297,
-        "RE_cap24": 0.3012,
-        "RE_cap36": 0.3012,
-        "Rev_fin/CA": 0.0
+        "RE_actif": 0.1621,
+        "RC_actif": 0.0949,
+        "RL_actif": 0.0884
       }
     },
     "TTLC": {
-      "compatible": true,
-      "n_standards": 4,
+      "compatible": false,
+      "n_standards": 2,
       "halal_sector": true,
-      "excluded": false,
-      "illicit_ratio": 0.0,
       "standards": {
         "DJIM": {
           "pass": true
         },
         "FTSE": {
-          "pass": true
+          "pass": false
         },
         "S&P": {
-          "pass": true
+          "pass": false
         },
         "AAOIFI": {
           "pass": true
         }
       },
-      "annee": 2025,
-      "source": "fin_data",
-      "cap24_source": "actif (fallback)",
-      "cap36_source": "actif (fallback)",
       "ratios": {
-        "RE_actif": 0.0,
-        "RC_actif": 0.0,
-        "RL_actif": 0.0,
-        "RE_cap24": 0.0,
-        "RE_cap36": 0.0,
-        "Rev_fin/CA": 0.0
+        "RE_actif": 0.0326,
+        "RC_actif": 0.496,
+        "RL_actif": 0.1298
       }
     },
     "STAC": {
-      "compatible": true,
-      "n_standards": 4,
+      "compatible": false,
+      "n_standards": 0,
       "halal_sector": true,
-      "excluded": false,
-      "illicit_ratio": 0.0,
       "standards": {
         "DJIM": {
-          "pass": true
+          "pass": false
         },
         "FTSE": {
-          "pass": true
+          "pass": false
         },
         "S&P": {
-          "pass": true
+          "pass": false
         },
         "AAOIFI": {
-          "pass": true
+          "pass": false
         }
       },
-      "annee": 2025,
-      "source": "fin_data",
-      "cap24_source": "actif (fallback)",
-      "cap36_source": "actif (fallback)",
       "ratios": {
-        "RE_actif": 0.0,
-        "RC_actif": 0.0,
-        "RL_actif": 0.0,
-        "RE_cap24": 0.0,
-        "RE_cap36": 0.0,
-        "Rev_fin/CA": 0.0
+        "RE_actif": 0.0115,
+        "RC_actif": 0.3147,
+        "RL_actif": 0.5615
       }
     },
     "PRSC": {
       "compatible": true,
       "n_standards": 4,
       "halal_sector": true,
-      "excluded": false,
-      "illicit_ratio": 0.0,
       "standards": {
         "DJIM": {
           "pass": true
@@ -726,97 +673,22 @@
           "pass": true
         }
       },
-      "annee": 2025,
-      "source": "fin_data",
-      "cap24_source": "actif (fallback)",
-      "cap36_source": "actif (fallback)",
       "ratios": {
-        "RE_actif": 0.0,
-        "RC_actif": 0.0,
-        "RL_actif": 0.0,
-        "RE_cap24": 0.0,
-        "RE_cap36": 0.0,
-        "Rev_fin/CA": 0.0
+        "RE_actif": 0.0624,
+        "RC_actif": 0.1901,
+        "RL_actif": 0.0263
       }
     },
     "NEIC": {
-      "compatible": true,
-      "n_standards": 4,
+      "compatible": false,
+      "n_standards": 1,
       "halal_sector": true,
-      "excluded": false,
-      "illicit_ratio": 0.0,
       "standards": {
         "DJIM": {
-          "pass": true
+          "pass": false
         },
         "FTSE": {
-          "pass": true
-        },
-        "S&P": {
-          "pass": true
-        },
-        "AAOIFI": {
-          "pass": true
-        }
-      },
-      "annee": 2025,
-      "source": "fin_data",
-      "cap24_source": "actif (fallback)",
-      "cap36_source": "actif (fallback)",
-      "ratios": {
-        "RE_actif": 0.0,
-        "RC_actif": 0.0,
-        "RL_actif": 0.0,
-        "RE_cap24": 0.0,
-        "RE_cap36": 0.0,
-        "Rev_fin/CA": 0.0
-      }
-    },
-    "SCRC": {
-      "compatible": true,
-      "n_standards": 4,
-      "halal_sector": true,
-      "excluded": false,
-      "illicit_ratio": 0.0,
-      "standards": {
-        "DJIM": {
-          "pass": true
-        },
-        "FTSE": {
-          "pass": true
-        },
-        "S&P": {
-          "pass": true
-        },
-        "AAOIFI": {
-          "pass": true
-        }
-      },
-      "annee": 2025,
-      "source": "fin_data",
-      "cap24_source": "actif (fallback)",
-      "cap36_source": "actif (fallback)",
-      "ratios": {
-        "RE_actif": 0.0,
-        "RC_actif": 0.0,
-        "RL_actif": 0.0,
-        "RE_cap24": 0.0,
-        "RE_cap36": 0.0,
-        "Rev_fin/CA": 0.0
-      }
-    },
-    "ORAC": {
-      "compatible": true,
-      "n_standards": 3,
-      "halal_sector": true,
-      "excluded": false,
-      "illicit_ratio": 0.0,
-      "standards": {
-        "DJIM": {
-          "pass": true
-        },
-        "FTSE": {
-          "pass": true
+          "pass": false
         },
         "S&P": {
           "pass": false
@@ -825,17 +697,370 @@
           "pass": true
         }
       },
-      "annee": 2025,
-      "source": "fin_data",
-      "cap24_source": "moy CP 2 ans",
-      "cap36_source": "moy CP 3 ans",
       "ratios": {
-        "RE_actif": 0.3004,
+        "RE_actif": 0.0545,
+        "RC_actif": 0.6097,
+        "RL_actif": 0.1333
+      }
+    },
+    "SCRC": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": true,
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      },
+      "ratios": {
+        "RE_actif": 0.5872,
+        "RC_actif": 0.0173,
+        "RL_actif": 0.0289
+      }
+    },
+    "ORAC": {
+      "compatible": true,
+      "n_standards": 4,
+      "halal_sector": true,
+      "standards": {
+        "DJIM": {
+          "pass": true
+        },
+        "FTSE": {
+          "pass": true
+        },
+        "S&P": {
+          "pass": true
+        },
+        "AAOIFI": {
+          "pass": true
+        }
+      },
+      "ratios": {
+        "RE_actif": 0.0,
         "RC_actif": 0.0,
-        "RL_actif": 0.202,
-        "RE_cap24": 0.4726,
-        "RE_cap36": 0.4697,
-        "Rev_fin/CA": 0.0
+        "RL_actif": 0.0
+      }
+    },
+    "SICC": {
+      "compatible": true,
+      "n_standards": 4,
+      "halal_sector": true,
+      "standards": {
+        "DJIM": {
+          "pass": true
+        },
+        "FTSE": {
+          "pass": true
+        },
+        "S&P": {
+          "pass": true
+        },
+        "AAOIFI": {
+          "pass": true
+        }
+      },
+      "ratios": {
+        "RE_actif": 0.0,
+        "RC_actif": 0.0,
+        "RL_actif": 0.0
+      }
+    },
+    "SOGB": {
+      "compatible": true,
+      "n_standards": 4,
+      "halal_sector": true,
+      "standards": {
+        "DJIM": {
+          "pass": true
+        },
+        "FTSE": {
+          "pass": true
+        },
+        "S&P": {
+          "pass": true
+        },
+        "AAOIFI": {
+          "pass": true
+        }
+      },
+      "ratios": {
+        "RE_actif": 0.0001,
+        "RC_actif": 0.0889,
+        "RL_actif": 0.0584
+      }
+    },
+    "SPHC": {
+      "compatible": true,
+      "n_standards": 4,
+      "halal_sector": true,
+      "standards": {
+        "DJIM": {
+          "pass": true
+        },
+        "FTSE": {
+          "pass": true
+        },
+        "S&P": {
+          "pass": true
+        },
+        "AAOIFI": {
+          "pass": true
+        }
+      },
+      "ratios": {
+        "RE_actif": 0.1576,
+        "RC_actif": 0.1467,
+        "RL_actif": 0.003
+      }
+    },
+    "ABJC": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": true,
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": false
+        }
+      },
+      "ratios": {
+        "RE_actif": 0.0479,
+        "RC_actif": 0.3477,
+        "RL_actif": 0.4373
+      }
+    },
+    "CFAC": {
+      "compatible": true,
+      "n_standards": 4,
+      "halal_sector": true,
+      "standards": {
+        "DJIM": {
+          "pass": true
+        },
+        "FTSE": {
+          "pass": true
+        },
+        "S&P": {
+          "pass": true
+        },
+        "AAOIFI": {
+          "pass": true
+        }
+      },
+      "ratios": {
+        "RE_actif": 0.0403,
+        "RC_actif": 0.2723,
+        "RL_actif": 0.0459
+      }
+    },
+    "SHEC": {
+      "compatible": true,
+      "n_standards": 3,
+      "halal_sector": true,
+      "standards": {
+        "DJIM": {
+          "pass": true
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": true
+        },
+        "AAOIFI": {
+          "pass": true
+        }
+      },
+      "ratios": {
+        "RE_actif": 0.0183,
+        "RC_actif": 0.4709,
+        "RL_actif": 0.047
+      }
+    },
+    "TTLS": {
+      "compatible": true,
+      "n_standards": 4,
+      "halal_sector": true,
+      "standards": {
+        "DJIM": {
+          "pass": true
+        },
+        "FTSE": {
+          "pass": true
+        },
+        "S&P": {
+          "pass": true
+        },
+        "AAOIFI": {
+          "pass": true
+        }
+      },
+      "ratios": {
+        "RE_actif": 0.0319,
+        "RC_actif": 0.0682,
+        "RL_actif": 0.0936
+      }
+    },
+    "ONTBF": {
+      "compatible": false,
+      "n_standards": 1,
+      "halal_sector": true,
+      "standards": {
+        "DJIM": {
+          "pass": false
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "AAOIFI": {
+          "pass": true
+        }
+      },
+      "ratios": {
+        "RE_actif": 0.1539,
+        "RC_actif": 0.8227,
+        "RL_actif": 0.0243
+      }
+    },
+    "SDCC": {
+      "compatible": true,
+      "n_standards": 4,
+      "halal_sector": true,
+      "standards": {
+        "DJIM": {
+          "pass": true
+        },
+        "FTSE": {
+          "pass": true
+        },
+        "S&P": {
+          "pass": true
+        },
+        "AAOIFI": {
+          "pass": true
+        }
+      },
+      "ratios": {
+        "RE_actif": 0.2004,
+        "RC_actif": 0.0744,
+        "RL_actif": 0.1639
+      }
+    },
+    "SDSC": {
+      "compatible": true,
+      "n_standards": 4,
+      "halal_sector": true,
+      "standards": {
+        "DJIM": {
+          "pass": true
+        },
+        "FTSE": {
+          "pass": true
+        },
+        "S&P": {
+          "pass": true
+        },
+        "AAOIFI": {
+          "pass": true
+        }
+      },
+      "ratios": {
+        "RE_actif": 0.0851,
+        "RC_actif": 0.0,
+        "RL_actif": 0.2443
+      }
+    },
+    "SVOC": {
+      "compatible": true,
+      "n_standards": 3,
+      "halal_sector": true,
+      "standards": {
+        "DJIM": {
+          "pass": true
+        },
+        "FTSE": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": true
+        },
+        "AAOIFI": {
+          "pass": true
+        }
+      },
+      "ratios": {
+        "RE_actif": 0.1783,
+        "RC_actif": 0.3929,
+        "RL_actif": 0.2395
+      }
+    },
+    "CABC": {
+      "compatible": true,
+      "n_standards": 4,
+      "halal_sector": true,
+      "standards": {
+        "DJIM": {
+          "pass": true
+        },
+        "FTSE": {
+          "pass": true
+        },
+        "S&P": {
+          "pass": true
+        },
+        "AAOIFI": {
+          "pass": true
+        }
+      },
+      "ratios": {
+        "RE_actif": 0.2116,
+        "RC_actif": 0.2534,
+        "RL_actif": 0.0489
+      }
+    },
+    "FTSC": {
+      "compatible": true,
+      "n_standards": 4,
+      "halal_sector": true,
+      "standards": {
+        "DJIM": {
+          "pass": true
+        },
+        "FTSE": {
+          "pass": true
+        },
+        "S&P": {
+          "pass": true
+        },
+        "AAOIFI": {
+          "pass": true
+        }
+      },
+      "ratios": {
+        "RE_actif": 0.0,
+        "RC_actif": 0.0,
+        "RL_actif": 0.0
       }
     }
   }
