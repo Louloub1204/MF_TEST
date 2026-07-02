@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "last_updated": "2026-06-24T11:10:42.227500",
+    "last_updated": "2026-07-02T14:14:55.383177",
     "tickers": [
       "BICC",
       "BNBC",
@@ -10,6 +10,7 @@
       "BOAS",
       "CIEC",
       "ECOC",
+      "ETIT",
       "NEIC",
       "NSBC",
       "NTLC",
@@ -28,7 +29,7 @@
       "TTLC",
       "TTLS"
     ],
-    "count": 25
+    "count": 26
   },
   "data": {
     "SGBC": {
@@ -1951,6 +1952,83 @@
         "type": "societe",
         "unite": "Mds FCFA",
         "secteur": "Télécom"
+      }
+    },
+    "ETIT": {
+      "2020": {
+        "amortissements": -60074000000.0,
+        "rex": 215205000000.0,
+        "rn": 54064000000.0,
+        "immo_incorpo": 84493000000.0,
+        "immo_corpo": 491420000000.0,
+        "total_actif": 13713596000000.0,
+        "capitaux_propres": 1075055000000.0,
+        "dette_financiere": 0,
+        "type": "societe",
+        "unite": "M FCFA",
+        "secteur": "Groupe bancaire IFRS"
+      },
+      "2021": {
+        "amortissements": -60254000000.0,
+        "rex": 279643000000.0,
+        "rn": 198151000000.0,
+        "total_actif": 15962697000000.0,
+        "capitaux_propres": 1253480000000.0,
+        "dette_financiere": 0,
+        "type": "societe",
+        "unite": "M FCFA",
+        "secteur": "Groupe bancaire IFRS"
+      },
+      "2022": {
+        "amortissements": -63182000000.0,
+        "rex": 357668000000.0,
+        "rn": 228750000000.0,
+        "immo_incorpo": 52741000000.0,
+        "immo_corpo": 470368000000.0,
+        "total_actif": 17837510000000.0,
+        "capitaux_propres": 1246610000000.0,
+        "dette_financiere": 0,
+        "type": "societe",
+        "unite": "M FCFA",
+        "secteur": "Groupe bancaire IFRS"
+      },
+      "2023": {
+        "amortissements": -54676000000.0,
+        "rn": 246811000000.0,
+        "immo_incorpo": 32839000000.0,
+        "immo_corpo": 349259000000.0,
+        "total_actif": 16164541000000.0,
+        "capitaux_propres": 1029619000000.0,
+        "dette_financiere": 0,
+        "type": "societe",
+        "unite": "M FCFA",
+        "secteur": "Groupe bancaire IFRS"
+      },
+      "2024": {
+        "amortissements": -47875000000.0,
+        "rex": 401805000000.0,
+        "rn": 299708000000.0,
+        "immo_incorpo": 24973000000.0,
+        "immo_corpo": 355355000000.0,
+        "total_actif": 17650776000000.0,
+        "capitaux_propres": 1133230000000.0,
+        "dette_financiere": 0,
+        "type": "societe",
+        "unite": "M FCFA",
+        "secteur": "Groupe bancaire IFRS"
+      },
+      "2025": {
+        "amortissements": -46765000000.0,
+        "rex": 465618000000.0,
+        "rn": 345523000000.0,
+        "immo_incorpo": 22254000000.0,
+        "immo_corpo": 373043000000.0,
+        "total_actif": 19243865000000.0,
+        "capitaux_propres": 1597846000000.0,
+        "dette_financiere": 0,
+        "type": "societe",
+        "unite": "M FCFA",
+        "secteur": "Groupe bancaire IFRS"
       }
     }
   }
