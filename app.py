@@ -3164,10 +3164,10 @@ with t6:
                     st.caption("Scores F_i(T) recalculés sur cette plage")
                     ml_ts = st.date_input("Début features", key="ml_ts",
                         value=max(c_min, min(c_max, pd.Timestamp("2019-01-01").date())),
-                        min_value=c_min, max_value=c_max)
+                        min_value=c_min, max_value=max(c_max, datetime.date.today()))
                     ml_te = st.date_input("Fin features", key="ml_te",
                         value=max(c_min, min(c_max, pd.Timestamp("2023-12-31").date())),
-                        min_value=c_min, max_value=c_max)
+                        min_value=c_min, max_value=max(c_max, datetime.date.today()))
                     fund_years = data.get("fundamental_years", [2024])
                     ml_year = st.selectbox("Année fondamentaux", fund_years, key="ml_year")
 
@@ -3176,9 +3176,9 @@ with t6:
                     st.caption("Rendement total (P_fin - P_deb) / P_deb")
                     ml_tgs = st.date_input("Début cible", key="ml_tgs",
                         value=max(c_min, min(c_max, pd.Timestamp("2024-01-01").date())),
-                        min_value=c_min, max_value=c_max)
+                        min_value=c_min, max_value=max(c_max, datetime.date.today()))
                     ml_tge = st.date_input("Fin cible", key="ml_tge",
-                        value=c_max, min_value=c_min, max_value=c_max)
+                        value=c_max, min_value=c_min, max_value=max(c_max, datetime.date.today()))
                     st.markdown("<br>", unsafe_allow_html=True)
                     if ml_tgs < ml_tge:
                         gap = (ml_tgs - ml_te).days if ml_te < ml_tgs else 0
@@ -3949,14 +3949,14 @@ with t8:
             beta_start = st.date_input(
                 "Début fenêtre β", key="beta_start",
                 value=max(c_min_v, min(c_max_v, pd.Timestamp("2022-01-01").date())),
-                min_value=c_min_v, max_value=c_max_v,
+                min_value=c_min_v, max_value=max(c_max_v, datetime.date.today()),
                 help="Date de début pour estimer le beta"
             )
         with bc2:
             beta_end = st.date_input(
                 "Fin fenêtre β", key="beta_end",
                 value=c_max_v,
-                min_value=c_min_v, max_value=c_max_v,
+                min_value=c_min_v, max_value=max(c_max_v, datetime.date.today()),
                 help="Date de fin pour estimer le beta (en général = aujourd'hui)"
             )
         with bc3:
@@ -4741,10 +4741,10 @@ with t9:
         with bp1:
             bt_start = st.date_input("Date de début",
                 value=max(c_min, min(c_max, pd.Timestamp("2018-01-01").date())),
-                min_value=c_min, max_value=c_max, key="bt_start")
+                min_value=c_min, max_value=max(c_max, datetime.date.today()), key="bt_start")
         with bp2:
             bt_end = st.date_input("Date de fin",
-                value=c_max, min_value=c_min, max_value=c_max, key="bt_end")
+                value=c_max, min_value=c_min, max_value=max(c_max, datetime.date.today()), key="bt_end")
         with bp3:
             st.markdown("<br>", unsafe_allow_html=True)
             n_days_bt = (bt_end - bt_start).days
@@ -4964,7 +4964,7 @@ with t10:
         with cp3:
             perf_start = st.date_input("Début perf. sectorielle",
                 value=max(c_min, min(c_max, pd.Timestamp("2020-01-01").date())),
-                min_value=c_min, max_value=c_max, key="perf_start")
+                min_value=c_min, max_value=max(c_max, datetime.date.today()), key="perf_start")
 
         if st.button("🔗 Calculer les analyses", type="primary"):
             with st.spinner("Calcul des corrélations et diversification..."):

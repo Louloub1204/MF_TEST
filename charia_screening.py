@@ -75,66 +75,69 @@ def _screen_ratios(re, rc_a, rl, re_c24, rc_c24, rl_c24,
 def parse_screening_file(filepath):
     """
     Parse le fichier Excel de screening.
-    Utilise les ratios précalculés du feuillet TEST SCREENING UMOA
-    et les tickers du feuillet Feuil1 (même ordre).
+    Calcule les ratios DIRECTEMENT depuis les données brutes de Feuil1
+    (dette, créances, cash, actif, cap moy 24/36) — ticker et données
+    sur la même ligne, donc aucun risque de désalignement entre feuilles.
 
     Retourne dict {ticker: screening_result}.
     """
-    df_test  = pd.read_excel(filepath, sheet_name="TEST SCREENING UMOA", header=None)
-    df_feuil = pd.read_excel(filepath, sheet_name="Feuil1", header=None)
-
-    # Extraction ordonnée des tickers depuis Feuil1
-    feuil_tickers = []
-    for i in range(9, len(df_feuil) - 3):
-        row = df_feuil.iloc[i]
-        ticker = str(row[3]).strip()
-        if ticker not in ["nan", "NaN", ""] and not pd.isna(row[3]):
-            feuil_tickers.append(ticker)
-
-    # Extraction ordonnée des ratios depuis TEST SCREENING UMOA
-    test_rows = []
-    for i in range(5, 40):
-        row = df_test.iloc[i]
-        name = str(row[0]).strip()
-        if pd.isna(row[1]) or name in ["", "nan"]:
-            continue
-        test_rows.append((i, row))
-
+    df = pd.read_excel(filepath, sheet_name="Feuil1", header=None)
     results = {}
-    for idx, (ticker, (row_i, row)) in enumerate(
-            zip(feuil_tickers, test_rows)):
+
+    for i in range(len(df)):
+        ticker = str(df.iloc[i, 3]).strip()
+        # Ligne valide = ticker alphanumérique court en col 3 + actif en col 7
+        if ticker in ["nan", "NaN", ""] or pd.isna(df.iloc[i, 3]):
+            continue
+        if not (2 <= len(ticker) <= 6 and ticker.isalnum() and ticker.isupper()):
+            continue
 
         def sf(col):
             try:
-                v = float(row[col])
+                v = float(df.iloc[i, col])
                 return None if np.isnan(v) else v
             except Exception:
                 return None
 
-        # Ratios du TEST sheet (déjà normalisés)
-        re     = sf(9);  rc_a  = sf(10); rl     = sf(11)  # DJIM  (actif)
-        re_c24 = sf(13); rc_c24= sf(14); rl_c24 = sf(15)  # FTSE  (cap24)
-        re_c36 = sf(17); rc_c36= sf(18); rl_c36 = sf(19)  # S&P   (cap36)
-        ca_ill = sf(4) or 0
-        halal  = (ca_ill == 0)
+        dette = sf(4); crean = sf(5); cash = sf(6)
+        actif = sf(7); cap36 = sf(12); cap24 = sf(13)
+
+        if not actif or actif <= 0:
+            continue
+
+        # Ratios sur actif (DJIM, AAOIFI)
+        re_a = _r(dette, actif)
+        rc_a = _r(crean, actif)
+        rl_a = _r(cash,  actif)
+        # Ratios sur capitalisation moyenne (FTSE=24m, S&P=36m)
+        re24 = _r(dette, cap24) if cap24 else re_a
+        rc24 = _r(crean, cap24) if cap24 else rc_a
+        rl24 = _r(cash,  cap24) if cap24 else rl_a
+        re36 = _r(dette, cap36) if cap36 else re_a
+        rc36 = _r(crean, cap36) if cap36 else rc_a
+        rl36 = _r(cash,  cap36) if cap36 else rl_a
+
+        # Exclusions fixes prioritaires
+        if ticker.upper() in BANK_TICKERS or \
+           ticker.upper() in ILLICIT_SECTOR_TICKERS:
+            continue  # gérées par l'initialisation au démarrage
 
         stds, n_pass = _screen_ratios(
-            re, rc_a, rl,
-            re_c24 or re, rc_c24 or rc_a, rl_c24 or rl,
-            re_c36 or re, rc_c36 or rc_a, rl_c36 or rl,
-            halal
+            re_a, rc_a, rl_a,
+            re24, rc24, rl24,
+            re36, rc36, rl36,
+            halal=True
         )
-        compatible = n_pass >= MIN_STANDARDS_PASS
-
         results[ticker] = {
-            "compatible":   compatible,
+            "compatible":   n_pass >= MIN_STANDARDS_PASS,
             "n_standards":  n_pass,
-            "halal_sector": halal,
+            "halal_sector": True,
             "standards":    stds,
+            "source":       "screening_file",
             "ratios": {
-                "RE_actif": round(re, 4)    if re    is not None else None,
-                "RC_actif": round(rc_a, 4)  if rc_a  is not None else None,
-                "RL_actif": round(rl, 4)    if rl    is not None else None,
+                "RE_actif": round(re_a, 4) if re_a is not None else None,
+                "RC_actif": round(rc_a, 4) if rc_a is not None else None,
+                "RL_actif": round(rl_a, 4) if rl_a is not None else None,
             },
         }
 
