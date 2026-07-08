@@ -1,6 +1,6 @@
 """
 charia_screening.py — Screening Chariatique BRVM
-4 standards : DJIM · FTSE · S&P · AAOIFI/Malaisie
+4 standards : DJIM · FTSE · S&P · Malaysia
 Compatibilité : ≥ 3 standards sur 4 passés
 
 Les ratios sont calculés depuis le fichier de screening (Feuil1)
@@ -30,12 +30,12 @@ ILLICIT_SECTOR_TICKERS = {
     "SLBC": "Production / distribution de boissons alcoolisées",
 }
 
-# Seuils par standard
+# Seuils par standard (définitions exactes)
 SEUILS = {
-    "DJIM":  {"RE": 0.33, "RC_actif": 0.50, "RL": 0.33},
-    "FTSE":  {"RE": 0.33, "RC_cap24": 0.33, "RL_cap24": 0.33},
-    "S&P":   {"RE_cap36": 0.33, "RC_cap36": 0.49, "RL_cap36": 0.33},
-    "AAOIFI":{"RE": 0.33, "RL": 0.33},
+    "FTSE":   {"RE": 0.33, "RC_actif": 0.50, "RL": 0.33},   # base ACTIF TOTAL
+    "DJIM":   {"RE_cap24": 0.33, "RC_cap24": 0.33, "RL_cap24": 0.33},  # base CAP MOY 24 MOIS
+    "S&P":    {"RE_cap36": 0.33, "RC_cap36": 0.49, "RL_cap36": 0.33}, # base CAP MOY 36 MOIS
+    "Malaysia": {"RE": 0.33, "RC_cash": 0.33},  # base ACTIF TOTAL — RC=Cash/Actif
 }
 
 
@@ -57,18 +57,25 @@ def _chk(v, seuil):
 
 def _screen_ratios(re, rc_a, rl, re_c24, rc_c24, rl_c24,
                    re_c36, rc_c36, rl_c36, halal):
-    """Évalue les 4 standards et retourne (résultats dict, n_pass)."""
-    djim   = halal and _chk(re,0.33)    and _chk(rc_a,0.50)  and _chk(rl,0.33)
-    ftse   = halal and _chk(re,0.33)    and _chk(rc_c24,0.33) and _chk(rl_c24,0.33)
-    sp     = halal and _chk(re_c36,0.33)and _chk(rc_c36,0.49) and _chk(rl_c36,0.33)
-    aaoifi = halal and _chk(re,0.33)    and _chk(rl,0.33)
+    """
+    Évalue les 4 standards et retourne (résultats dict, n_pass).
 
-    n_pass = sum([djim, ftse, sp, aaoifi])
+    FTSE     : base ACTIF TOTAL      → RE<33% · RC<50% · RL<33%
+    DJIM     : base CAP MOY 24 MOIS  → RE<33% · RC<33% · RL<33%
+    S&P      : base CAP MOY 36 MOIS  → RE<33% · RC<49% · RL<33%
+    Malaysia : base ACTIF TOTAL      → RE<33% · RC(=Cash)<33%
+    """
+    ftse     = halal and _chk(re,0.33)     and _chk(rc_a,0.50)   and _chk(rl,0.33)
+    djim     = halal and _chk(re_c24,0.33) and _chk(rc_c24,0.33) and _chk(rl_c24,0.33)
+    sp       = halal and _chk(re_c36,0.33) and _chk(rc_c36,0.49) and _chk(rl_c36,0.33)
+    malaysia = halal and _chk(re,0.33)     and _chk(rl,0.33)
+
+    n_pass = sum([ftse, djim, sp, malaysia])
     return {
-        "DJIM":   {"pass": djim},
-        "FTSE":   {"pass": ftse},
-        "S&P":    {"pass": sp},
-        "AAOIFI": {"pass": aaoifi},
+        "FTSE":     {"pass": ftse},
+        "DJIM":     {"pass": djim},
+        "S&P":      {"pass": sp},
+        "Malaysia": {"pass": malaysia},
     }, n_pass
 
 
@@ -174,7 +181,7 @@ def screen_from_fin_data(ticker, fin_data, nb_titres, cours_moy=None):
             "halal_sector":  False,
             "excluded":      True,
             "raison":        "Banque conventionnelle — incompatible Charia (modèle Riba)",
-            "standards":     {s: {"pass": False} for s in ["DJIM","FTSE","S&P","AAOIFI"]},
+            "standards":     {s: {"pass": False} for s in ["DJIM","FTSE","S&P","Malaysia"]},
             "annee":         yr,
             "source":        "fin_data",
             "ratios":        {},
@@ -189,7 +196,7 @@ def screen_from_fin_data(ticker, fin_data, nb_titres, cours_moy=None):
             "halal_sector":  False,
             "excluded":      True,
             "raison":        f"Secteur illicite — {illicit_sector}",
-            "standards":     {s: {"pass": False} for s in ["DJIM","FTSE","S&P","AAOIFI"]},
+            "standards":     {s: {"pass": False} for s in ["DJIM","FTSE","S&P","Malaysia"]},
             "annee":         yr,
             "source":        "fin_data",
             "ratios":        {},

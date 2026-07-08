@@ -1242,14 +1242,14 @@ if "charia_results" not in st.session_state:
                 "compatible": False, "n_standards": 0,
                 "halal_sector": False, "excluded": True,
                 "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
-                "standards": {s: {"pass": False} for s in ["DJIM","FTSE","S&P","AAOIFI"]},
+                "standards": {s: {"pass": False} for s in ["DJIM","FTSE","S&P","Malaysia"]},
             }
         for t, raison in ILLICIT_SECTOR_TICKERS.items():
             _init_charia[t] = {
                 "compatible": False, "n_standards": 0,
                 "halal_sector": False, "excluded": True,
                 "raison": f"Secteur illicite — {raison}",
-                "standards": {s: {"pass": False} for s in ["DJIM","FTSE","S&P","AAOIFI"]},
+                "standards": {s: {"pass": False} for s in ["DJIM","FTSE","S&P","Malaysia"]},
             }
         # Fusionner avec les données GitHub (les exclusions fixes ont priorité)
         charia_from_gh = st.session_state.pop("_charia_from_github", {})
@@ -2209,7 +2209,7 @@ with st.sidebar:
                                     color=C_LINE, spaceAfter=8))
             story.append(Paragraph(
                 "Le screening Charia évalue la conformité de chaque titre selon "
-                "4 standards islamiques reconnus : DJIM, FTSE, S&P et AAOIFI/Malaisie. "
+                "4 standards islamiques reconnus : FTSE, DJIM, S&P et Malaysia. "
                 "Un titre est considéré compatible s'il qualifie sur au moins 3 "
                 "standards sur 4. Les banques conventionnelles et les sociétés "
                 "opérant dans des secteurs illicites sont automatiquement exclues.",
@@ -3699,7 +3699,7 @@ with t7:
                     unsafe_allow_html=True)
                 st.markdown("""<div class='fbox'>
                 Sous-ensemble du portefeuille filtré sur les titres ≥ 3/4 standards Charia<br>
-                DJIM · FTSE · S&amp;P · AAOIFI — poids recalculés sur cet univers restreint
+                FTSE · DJIM · S&amp;P · Malaysia — poids recalculés sur cet univers restreint
                 </div>""", unsafe_allow_html=True)
 
                 charia_tickers = get_charia_compatible_tickers(
