@@ -3900,7 +3900,12 @@ with t8:
             if charia_file:
                 with st.spinner("Parsing screening Charia..."):
                     charia_static = parse_charia(charia_file)
-                    # Le fichier statique a priorité sur le calcul auto
+                    # Le fichier statique enrichit, mais les exclusions fixes
+                    # (banques + secteurs illicites) restent prioritaires
+                    from charia_screening import BANK_TICKERS, ILLICIT_SECTOR_TICKERS
+                    fixed_tickers = BANK_TICKERS | set(ILLICIT_SECTOR_TICKERS.keys())
+                    charia_static = {t: r for t, r in charia_static.items()
+                                     if t.upper() not in fixed_tickers}
                     merged_charia = {**st.session_state.charia_results, **charia_static}
                     st.session_state.charia_results = merged_charia
                 n_ok = len(get_charia_compatible_tickers(merged_charia))

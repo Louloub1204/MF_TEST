@@ -20,7 +20,7 @@ SEUIL_ILLICITE     = 0.05   # 5% — seuil de tolérance AAOIFI
 BANK_TICKERS = {
     "SGBC","SIBC","NSBC","ECOC","BICC","BOAB","BOAS",
     "BOABF","BOAM","BOAC","BOAN","CBIBF","ETI","ETIT",
-    "ORGT","SAFC","BICB","BNBC",
+    "ORGT","SAFC","BICB",
 }
 
 # Tickers exclus pour activités sectorielles illicites
@@ -81,70 +81,115 @@ def _screen_ratios(re, rc_a, rl, re_c24, rc_c24, rl_c24,
 
 def parse_screening_file(filepath):
     """
-    Parse le fichier Excel de screening.
-    Calcule les ratios DIRECTEMENT depuis les données brutes de Feuil1
-    (dette, créances, cash, actif, cap moy 24/36) — ticker et données
-    sur la même ligne, donc aucun risque de désalignement entre feuilles.
+    Parse le fichier Excel de screening — feuille 'TEST SCREENING UMOA'.
 
-    Retourne dict {ticker: screening_result}.
+    Colonnes lues (format officiel CGF) :
+      AA : Symbole (ticker)
+      J,K,L   : FTSE     — RE, RC, RL  (base ACTIF TOTAL)
+      N,O,P   : DJIM     — RE, RC, RL  (base CAP MOY 24 MOIS)
+      R,S,T   : S&P      — RE, RC, RL  (base CAP MOY 36 MOIS)
+      V,W     : Malaysia — RE, RC(cash) (base ACTIF TOTAL)
+      Y       : RR = Revenus portant intérêt / CA total (filtre préalable ≤5%)
+
+    Seuils réels appliqués (formatage conditionnel du fichier) :
+      FTSE     : RE>33% · RC>50% · RL>48%  → fail
+      DJIM     : RE>33% · RC>33% · RL>33%  → fail
+      S&P      : RE>33% · RC>49% · RL>33%  → fail
+      Malaysia : RE>33% · RC>48%           → fail
+
+    Un titre doit d'abord avoir Y ≤ 5%, puis qualifier sur ≥ 3 standards / 4.
     """
-    df = pd.read_excel(filepath, sheet_name="Feuil1", header=None)
+    import openpyxl
+    from openpyxl.utils import column_index_from_string
+
+    wb = openpyxl.load_workbook(filepath, data_only=True)
+    if "TEST SCREENING UMOA" not in wb.sheetnames:
+        return {}
+    ws = wb["TEST SCREENING UMOA"]
+
+    COLS = {c: column_index_from_string(c)
+            for c in ["AA","J","K","L","N","O","P","R","S","T","V","W","Y"]}
+
+    def cell_num(row, col_letter):
+        v = ws.cell(row, COLS[col_letter]).value
+        if v is None or isinstance(v, str):
+            return None  # #DIV/0! ou vide
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
     results = {}
-
-    for i in range(len(df)):
-        ticker = str(df.iloc[i, 3]).strip()
-        # Ligne valide = ticker alphanumérique court en col 3 + actif en col 7
-        if ticker in ["nan", "NaN", ""] or pd.isna(df.iloc[i, 3]):
+    for row in range(1, ws.max_row + 1):
+        ticker = ws.cell(row, COLS["AA"]).value
+        if not ticker or not isinstance(ticker, str) or not ticker.strip():
             continue
-        if not (2 <= len(ticker) <= 6 and ticker.isalnum() and ticker.isupper()):
-            continue
-
-        def sf(col):
-            try:
-                v = float(df.iloc[i, col])
-                return None if np.isnan(v) else v
-            except Exception:
-                return None
-
-        dette = sf(4); crean = sf(5); cash = sf(6)
-        actif = sf(7); cap36 = sf(12); cap24 = sf(13)
-
-        if not actif or actif <= 0:
+        ticker = ticker.strip().upper()
+        if not (2 <= len(ticker) <= 6 and ticker.isalnum()):
             continue
 
-        # Ratios sur actif (DJIM, AAOIFI)
-        re_a = _r(dette, actif)
-        rc_a = _r(crean, actif)
-        rl_a = _r(cash,  actif)
-        # Ratios sur capitalisation moyenne (FTSE=24m, S&P=36m)
-        re24 = _r(dette, cap24) if cap24 else re_a
-        rc24 = _r(crean, cap24) if cap24 else rc_a
-        rl24 = _r(cash,  cap24) if cap24 else rl_a
-        re36 = _r(dette, cap36) if cap36 else re_a
-        rc36 = _r(crean, cap36) if cap36 else rc_a
-        rl36 = _r(cash,  cap36) if cap36 else rl_a
+        j, k, l = cell_num(row,"J"), cell_num(row,"K"), cell_num(row,"L")
+        n, o, p = cell_num(row,"N"), cell_num(row,"O"), cell_num(row,"P")
+        r, s, t = cell_num(row,"R"), cell_num(row,"S"), cell_num(row,"T")
+        v, w    = cell_num(row,"V"), cell_num(row,"W")
+        y       = cell_num(row,"Y")
 
-        # Exclusions fixes prioritaires
-        if ticker.upper() in BANK_TICKERS or \
-           ticker.upper() in ILLICIT_SECTOR_TICKERS:
-            continue  # gérées par l'initialisation au démarrage
+        # Si toutes les valeurs sont None → ligne vide/erreur → ignorer
+        if all(x is None for x in [j,k,l,n,o,p,r,s,t,v,w]):
+            continue
 
-        stds, n_pass = _screen_ratios(
-            re_a, rc_a, rl_a,
-            re24, rc24, rl24,
-            re36, rc36, rl36,
-            halal=True
-        )
+        # Si toutes les valeurs sont à 0 → absence réelle de données
+        # (pas de dette/créances/cash renseignés) → non évaluable
+        all_vals = [x for x in [j,k,l,n,o,p,r,s,t,v,w] if x is not None]
+        if all_vals and all(x == 0 for x in all_vals):
+            results[ticker] = {
+                "compatible":    False,
+                "n_standards":   0,
+                "halal_sector":  None,
+                "excluded":      False,
+                "donnees_manquantes": True,
+                "standards": {s: {"pass": False}
+                             for s in ["FTSE","DJIM","S&P","Malaysia"]},
+                "source": "screening_file",
+                "ratios": {},
+            }
+            continue
+
+        def under(x, seuil):
+            """True si x <= seuil ou donnée manquante (ne pénalise pas)."""
+            return x is None or x <= seuil
+
+        ftse     = under(j,0.33) and under(k,0.50) and under(l,0.48)
+        djim     = under(n,0.33) and under(o,0.33) and under(p,0.33)
+        sp       = under(r,0.33) and under(s,0.49) and under(t,0.33)
+        malaysia = under(v,0.33) and under(w,0.48)
+
+        # Filtre préalable : revenus portant intérêt / CA ≤ 5%
+        halal = under(y, SEUIL_ILLICITE)
+
+        n_pass = sum([ftse, djim, sp, malaysia]) if halal else 0
+        compatible = halal and n_pass >= MIN_STANDARDS_PASS
+
         results[ticker] = {
-            "compatible":   n_pass >= MIN_STANDARDS_PASS,
-            "n_standards":  n_pass,
-            "halal_sector": True,
-            "standards":    stds,
-            "source":       "screening_file",
+            "compatible":    compatible,
+            "n_standards":   n_pass,
+            "halal_sector":  halal,
+            "excluded":      False,
+            "illicit_ratio": round(y, 4) if y is not None else 0,
+            "standards": {
+                "FTSE":     {"pass": ftse},
+                "DJIM":     {"pass": djim},
+                "S&P":      {"pass": sp},
+                "Malaysia": {"pass": malaysia},
+            },
+            "source": "screening_file",
             "ratios": {
-                "RE_actif": round(re_a, 4) if re_a is not None else None,
-                "RC_actif": round(rc_a, 4) if rc_a is not None else None,
-                "RL_actif": round(rl_a, 4) if rl_a is not None else None,
+                "RE_FTSE": round(j,4) if j is not None else None,
+                "RC_FTSE": round(k,4) if k is not None else None,
+                "RL_FTSE": round(l,4) if l is not None else None,
+                "RE_DJIM": round(n,4) if n is not None else None,
+                "RC_DJIM": round(o,4) if o is not None else None,
+                "RL_DJIM": round(p,4) if p is not None else None,
             },
         }
 
@@ -280,6 +325,8 @@ def get_charia_label(ticker, screening_results):
     r = screening_results.get(ticker)
     if r is None:
         return "—"
+    if r.get("donnees_manquantes"):
+        return "❓ Données insuffisantes"
     if r.get("excluded"):
         raison = r.get("raison", "")
         if "Banque" in raison:
