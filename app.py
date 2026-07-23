@@ -3510,6 +3510,103 @@ with t7:
                 st.info("💡 Pipeline standard (4 filtres) · Activez les contraintes "
                         "ci-dessus pour enrichir l'optimisation")
 
+            # ── Chargement États Financiers + Screening Charia ─────────
+            st.markdown("---")
+            st.markdown("**📁 Données complémentaires** *(états financiers + screening Charia)*")
+            st.caption("Nécessaires pour la valorisation (onglet 📈) et le portefeuille Charia ci-dessous")
+
+            if VALUATION_AVAILABLE:
+                fdc1, fdc2 = st.columns(2)
+
+                with fdc1:
+                    fs_file = st.file_uploader(
+                        "États financiers (Etats_Financiers_BRVM.xlsx)",
+                        type=["xlsx","xls"], key="fs_uploader_ptf"
+                    )
+                    if fs_file:
+                        with st.spinner("Parsing des états financiers..."):
+                            new_data = parse_financial_file(fs_file)
+                            nb_titres_tmp = st.session_state.data.get("nb_titres", {}) \
+                                            if st.session_state.data else {}
+                            cours_tmp     = st.session_state.data.get("cours", pd.DataFrame()) \
+                                            if st.session_state.data else pd.DataFrame()
+                            moy_tmp       = st.session_state.data.get("moyenne_cours", pd.DataFrame()) \
+                                            if st.session_state.data else pd.DataFrame()
+                            if nb_titres_tmp and not cours_tmp.empty:
+                                from fs_parser import validate_and_fix_units
+                                new_data, corrections = validate_and_fix_units(
+                                    new_data, nb_titres_tmp, cours_tmp
+                                )
+                                if corrections:
+                                    st.warning(
+                                        "⚠️ Correction unités : "
+                                        + ", ".join(f"{t} (PE {v['pe_avant']}x→{v['pe_apres']}x)"
+                                                    for t, v in corrections.items())
+                                    )
+                            existing_fd = load_financial_db(VALUATION_DB_PATH)
+                            merged_fd   = merge_financial_data(existing_fd, new_data)
+                            save_financial_db(merged_fd, VALUATION_DB_PATH)
+                            st.session_state.fin_data = merged_fd
+
+                            if GITHUB_STORAGE and is_github_configured():
+                                ok_fin = save_financial_db_github(merged_fd)
+                                save_charia_results(st.session_state.charia_results)
+                                if ok_fin:
+                                    st.caption("☁️ Sauvegardé sur GitHub")
+
+                            if CHARIA_AVAILABLE and nb_titres_tmp:
+                                charia_auto = screen_all_from_fin_data(
+                                    merged_fd, nb_titres_tmp, moy_tmp
+                                )
+                                existing_charia = st.session_state.charia_results
+                                for t, r in charia_auto.items():
+                                    if t not in existing_charia:
+                                        existing_charia[t] = r
+                                st.session_state.charia_results = existing_charia
+
+                        years_new = {yr for t in new_data.values() for yr in t.keys()}
+                        n_charia  = len(get_charia_compatible_tickers(
+                                          st.session_state.charia_results)) \
+                                    if CHARIA_AVAILABLE else 0
+                        st.success(
+                            f"✅ {len(new_data)} sociétés · {sorted(years_new)} · "
+                            f"☪️ {n_charia} compatibles"
+                        )
+
+                with fdc2:
+                    if CHARIA_AVAILABLE:
+                        charia_file = st.file_uploader(
+                            "Screening Charia (CHARIA_SCREENING_MODEL.xlsx)",
+                            type=["xlsx","xls"], key="charia_uploader_ptf"
+                        )
+                        if charia_file:
+                            with st.spinner("Parsing screening Charia..."):
+                                charia_static = parse_charia(charia_file)
+                                from charia_screening import BANK_TICKERS, ILLICIT_SECTOR_TICKERS
+                                fixed_tickers = BANK_TICKERS | set(ILLICIT_SECTOR_TICKERS.keys())
+                                charia_static = {t: r for t, r in charia_static.items()
+                                                 if t.upper() not in fixed_tickers}
+                                merged_charia = {**st.session_state.charia_results, **charia_static}
+                                st.session_state.charia_results = merged_charia
+                            n_ok = len(get_charia_compatible_tickers(merged_charia))
+                            st.success(f"✅ {len(charia_static)} tickers · ☪️ {n_ok} compatibles")
+                            if GITHUB_STORAGE and is_github_configured():
+                                save_charia_results(merged_charia)
+
+                # Statut base actuelle
+                fin_data_status = st.session_state.fin_data
+                if fin_data_status:
+                    all_yrs = sorted({yr for t in fin_data_status.values() for yr in t.keys()})
+                    n_ch = len(get_charia_compatible_tickers(
+                                st.session_state.charia_results)) if CHARIA_AVAILABLE else 0
+                    st.caption(
+                        f"📊 Base actuelle : **{len(fin_data_status)}** sociétés · "
+                        f"Années {min(all_yrs)}–{max(all_yrs)} · "
+                        f"☪️ **{n_ch}** compatibles Charia"
+                    )
+            else:
+                st.warning("⚠️ Modules de valorisation non disponibles (fs_parser.py / valuation_models.py manquants).")
+
             if st.button("🚀 Lancer le pipeline", type="primary"):
                 with st.spinner("Optimisation en cours..."):
                     inc,pw,pipeline_log = run_optimization_pipeline(
@@ -3818,7 +3915,7 @@ with t8:
     st.markdown("<span class='pill'>Valorisation · Prix Cible</span><p class='sh'>Modèles de valorisation théorique</p>", unsafe_allow_html=True)
     st.markdown("""<div class='fbox'>
     DDM · P/E relatif · P/B · DCF simplifié → Prix cible combiné par titre<br>
-    Chargez votre fichier d'états financiers · La base est persistée entre les sessions
+    Les états financiers et le screening Charia se chargent depuis l'onglet 📂 Portefeuille
     </div>""", unsafe_allow_html=True)
 
     if not VALUATION_AVAILABLE:
@@ -3827,110 +3924,26 @@ with t8:
         st.info("Vérifiez que fs_parser.py et valuation_models.py sont à la racine du dépôt GitHub (même niveau que app.py).")
         st.stop()
 
-    # ── Chargement du fichier états financiers ─────────────────
-    st.markdown("**📁 États Financiers**")
-    col_up, col_db = st.columns([2, 1])
-
-    with col_up:
-        fs_file = st.file_uploader(
-            "Charger Etats_Financiers_BRVM.xlsx (nouveau chargement = mise à jour cumulative)",
-            type=["xlsx","xls"], key="fs_uploader"
-        )
-        if fs_file:
-            with st.spinner("Parsing des états financiers..."):
-                new_data = parse_financial_file(fs_file)
-                nb_titres_tmp = st.session_state.data.get("nb_titres", {}) \
-                                if st.session_state.data else {}
-                cours_tmp     = st.session_state.data.get("cours", pd.DataFrame()) \
-                                if st.session_state.data else pd.DataFrame()
-                moy_tmp       = st.session_state.data.get("moyenne_cours", pd.DataFrame()) \
-                                if st.session_state.data else pd.DataFrame()
-                if nb_titres_tmp and not cours_tmp.empty:
-                    from fs_parser import validate_and_fix_units
-                    new_data, corrections = validate_and_fix_units(
-                        new_data, nb_titres_tmp, cours_tmp
-                    )
-                    if corrections:
-                        st.warning(
-                            f"⚠️ Correction automatique d'unités : "
-                            + ", ".join(f"{t} (PE {v['pe_avant']}x→{v['pe_apres']}x)"
-                                        for t, v in corrections.items())
-                        )
-                existing = load_financial_db(VALUATION_DB_PATH)
-                merged   = merge_financial_data(existing, new_data)
-                save_financial_db(merged, VALUATION_DB_PATH)
-                st.session_state.fin_data = merged
-
-                # Sauvegarde GitHub silencieuse
-                if GITHUB_STORAGE and is_github_configured():
-                    ok_fin = save_financial_db_github(merged)
-                    ok_ch  = save_charia_results(st.session_state.charia_results)
-                    if ok_fin:
-                        st.caption("☁️ États financiers sauvegardés sur GitHub")
-
-                # ── Screening Charia automatique depuis fin_data ──────
-                if CHARIA_AVAILABLE and nb_titres_tmp:
-                    charia_auto = screen_all_from_fin_data(
-                        merged, nb_titres_tmp, moy_tmp
-                    )
-                    # Fusion avec screening existant (priorité au fichier statique)
-                    existing_charia = st.session_state.charia_results
-                    for t, r in charia_auto.items():
-                        if t not in existing_charia:
-                            existing_charia[t] = r
-                    st.session_state.charia_results = existing_charia
-
-            tickers_new = set(new_data.keys()) - set(existing.keys())
-            years_new   = {yr for t in new_data.values() for yr in t.keys()}
-            n_charia    = len(get_charia_compatible_tickers(
-                              st.session_state.charia_results)) \
-                          if CHARIA_AVAILABLE else 0
-            st.success(
-                f"✅ {len(new_data)} sociétés · Années : {sorted(years_new)} · "
-                f"Base : {len(merged)} · ☪️ Charia compatibles : {n_charia}"
-            )
-
-    # ── Chargement fichier screening Charia statique ───────────
-    if CHARIA_AVAILABLE:
-        with st.expander("☪️ Charger le fichier de screening Charia (optionnel)", expanded=False):
-            charia_file = st.file_uploader(
-                "CHARIA_SCREENING_MODEL.xlsx — enrichit le screening automatique",
-                type=["xlsx","xls"], key="charia_uploader"
-            )
-            if charia_file:
-                with st.spinner("Parsing screening Charia..."):
-                    charia_static = parse_charia(charia_file)
-                    # Le fichier statique enrichit, mais les exclusions fixes
-                    # (banques + secteurs illicites) restent prioritaires
-                    from charia_screening import BANK_TICKERS, ILLICIT_SECTOR_TICKERS
-                    fixed_tickers = BANK_TICKERS | set(ILLICIT_SECTOR_TICKERS.keys())
-                    charia_static = {t: r for t, r in charia_static.items()
-                                     if t.upper() not in fixed_tickers}
-                    merged_charia = {**st.session_state.charia_results, **charia_static}
-                    st.session_state.charia_results = merged_charia
-                n_ok = len(get_charia_compatible_tickers(merged_charia))
-                st.success(f"✅ {len(charia_static)} tickers screenés · "
-                           f"☪️ {n_ok} compatibles Charia")
-                # Sauvegarde GitHub
-                if GITHUB_STORAGE and is_github_configured():
-                    with st.spinner("💾 Sauvegarde Charia GitHub..."):
-                        save_charia_results(merged_charia)
-
-    with col_db:
-        fin_data = st.session_state.fin_data
-        if fin_data:
-            all_years = sorted({yr for t in fin_data.values() for yr in t.keys()})
-            st.metric("Sociétés en base", len(fin_data))
-            st.metric("Années disponibles", f"{min(all_years)}–{max(all_years)}")
-            if os.path.exists(VALUATION_DB_PATH):
-                db_data = json.load(open(VALUATION_DB_PATH))
-                st.caption(f"Dernière mise à jour : {db_data.get('metadata',{}).get('last_updated','—')[:10]}")
-        else:
-            st.info("Aucune donnée en base. Chargez un fichier.")
+    # ── Statut de la base états financiers ──────────────────────
+    st.markdown("**📁 États Financiers — Base actuelle**")
+    fin_data = st.session_state.fin_data
+    if fin_data:
+        all_years = sorted({yr for t in fin_data.values() for yr in t.keys()})
+        n_charia  = len(get_charia_compatible_tickers(
+                          st.session_state.charia_results)) \
+                    if CHARIA_AVAILABLE else 0
+        sc1, sc2, sc3 = st.columns(3)
+        sc1.metric("Sociétés en base", len(fin_data))
+        sc2.metric("Années disponibles", f"{min(all_years)}–{max(all_years)}")
+        sc3.metric("☪️ Charia compatibles", n_charia)
+        if os.path.exists(VALUATION_DB_PATH):
+            db_data = json.load(open(VALUATION_DB_PATH))
+            st.caption(f"Dernière mise à jour : {db_data.get('metadata',{}).get('last_updated','—')[:10]}")
+    else:
+        st.info("📂 Aucune donnée en base. Rendez-vous dans l'onglet **📂 Portefeuille** "
+                "pour charger le fichier **Etats_Financiers_BRVM.xlsx**.")
 
     _has_fin_data = bool(fin_data)
-    if not _has_fin_data:
-        st.info("📂 Aucune donnée en base. Chargez votre fichier **Etats_Financiers_BRVM.xlsx** ci-dessus pour commencer.")
 
     if _has_fin_data:
         st.markdown("---")
@@ -3938,6 +3951,7 @@ with t8:
         # ── Info calibrage automatique ─────────────────────────────
         st.markdown("""<div class='fbox'>
         🤖 <b>Calibrage 100% automatique</b> — Zéro saisie manuelle<br>
+
         β calculé depuis cours historiques · ke/WACC via CAPM · kd depuis états financiers<br>
         P/E et P/B calibrés sur les multiples historiques observés du titre · g_FCF = CAGR Rex/RN
         </div>""", unsafe_allow_html=True)
