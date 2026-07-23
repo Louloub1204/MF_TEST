@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-07-23T12:54:51.357893",
+  "last_updated": "2026-07-23T12:54:52.619266",
   "results": {
     "SAFC": {
       "compatible": false,
@@ -65,24 +65,33 @@
       }
     },
     "BNBC": {
-      "compatible": false,
-      "n_standards": 0,
-      "halal_sector": false,
-      "excluded": true,
-      "raison": "Banque conventionnelle — incompatible Charia (modèle Riba)",
+      "compatible": true,
+      "n_standards": 4,
+      "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
-        "DJIM": {
-          "pass": false
-        },
         "FTSE": {
-          "pass": false
+          "pass": true
+        },
+        "DJIM": {
+          "pass": true
         },
         "S&P": {
-          "pass": false
+          "pass": true
         },
         "Malaysia": {
-          "pass": false
+          "pass": true
         }
+      },
+      "source": "screening_file",
+      "ratios": {
+        "RE_FTSE": 0.0192,
+        "RC_FTSE": 0.2505,
+        "RL_FTSE": 0.0376,
+        "RE_DJIM": 0.0192,
+        "RC_DJIM": 0.2505,
+        "RL_DJIM": 0.0376
       }
     },
     "BICC": {
@@ -443,9 +452,11 @@
       }
     },
     "PALC": {
-      "compatible": false,
-      "n_standards": 2,
+      "compatible": true,
+      "n_standards": 3,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": true
@@ -454,7 +465,7 @@
           "pass": false
         },
         "S&P": {
-          "pass": false
+          "pass": true
         },
         "Malaysia": {
           "pass": true
@@ -462,9 +473,12 @@
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.004,
-        "RC_actif": 0.3931,
-        "RL_actif": 0.0477
+        "RE_FTSE": 0.004,
+        "RC_FTSE": 0.3931,
+        "RL_FTSE": 0.0477,
+        "RE_DJIM": 0.004,
+        "RC_DJIM": 0.3931,
+        "RL_DJIM": 0.0477
       }
     },
     "SOGC": {
@@ -501,18 +515,20 @@
       }
     },
     "NTLC": {
-      "compatible": false,
-      "n_standards": 2,
+      "compatible": true,
+      "n_standards": 4,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": true
         },
         "DJIM": {
-          "pass": false
+          "pass": true
         },
         "S&P": {
-          "pass": false
+          "pass": true
         },
         "Malaysia": {
           "pass": true
@@ -520,15 +536,20 @@
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.2116,
-        "RC_actif": 0.2534,
-        "RL_actif": 0.0489
+        "RE_FTSE": 0.2116,
+        "RC_FTSE": 0.2534,
+        "RL_FTSE": 0.0489,
+        "RE_DJIM": 0.2116,
+        "RC_DJIM": 0.2534,
+        "RL_DJIM": 0.0489
       }
     },
     "SMBC": {
       "compatible": false,
       "n_standards": 1,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": false
@@ -545,24 +566,29 @@
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.0545,
-        "RC_actif": 0.6097,
-        "RL_actif": 0.1333
+        "RE_FTSE": 0.0545,
+        "RC_FTSE": 0.6097,
+        "RL_FTSE": 0.1333,
+        "RE_DJIM": 0.0545,
+        "RC_DJIM": 0.6097,
+        "RL_DJIM": 0.1333
       }
     },
     "CIEC": {
-      "compatible": false,
-      "n_standards": 2,
+      "compatible": true,
+      "n_standards": 4,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": true
         },
         "DJIM": {
-          "pass": false
+          "pass": true
         },
         "S&P": {
-          "pass": false
+          "pass": true
         },
         "Malaysia": {
           "pass": true
@@ -570,24 +596,29 @@
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.0319,
-        "RC_actif": 0.0682,
-        "RL_actif": 0.0936
+        "RE_FTSE": 0.0319,
+        "RC_FTSE": 0.0682,
+        "RL_FTSE": 0.0936,
+        "RE_DJIM": 0.0319,
+        "RC_DJIM": 0.0682,
+        "RL_DJIM": 0.0936
       }
     },
     "SNTS": {
-      "compatible": false,
-      "n_standards": 2,
+      "compatible": true,
+      "n_standards": 4,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": true
         },
         "DJIM": {
-          "pass": false
+          "pass": true
         },
         "S&P": {
-          "pass": false
+          "pass": true
         },
         "Malaysia": {
           "pass": true
@@ -595,15 +626,20 @@
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.2004,
-        "RC_actif": 0.0744,
-        "RL_actif": 0.1639
+        "RE_FTSE": 0.2004,
+        "RC_FTSE": 0.0744,
+        "RL_FTSE": 0.1639,
+        "RE_DJIM": 0.2004,
+        "RC_DJIM": 0.0744,
+        "RL_DJIM": 0.1639
       }
     },
     "TTLC": {
-      "compatible": false,
-      "n_standards": 2,
+      "compatible": true,
+      "n_standards": 3,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": true
@@ -612,7 +648,7 @@
           "pass": false
         },
         "S&P": {
-          "pass": false
+          "pass": true
         },
         "Malaysia": {
           "pass": true
@@ -620,24 +656,29 @@
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.0183,
-        "RC_actif": 0.4709,
-        "RL_actif": 0.047
+        "RE_FTSE": 0.0183,
+        "RC_FTSE": 0.4709,
+        "RL_FTSE": 0.047,
+        "RE_DJIM": 0.0183,
+        "RC_DJIM": 0.4709,
+        "RL_DJIM": 0.047
       }
     },
     "STAC": {
-      "compatible": false,
-      "n_standards": 2,
+      "compatible": true,
+      "n_standards": 4,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": true
         },
         "DJIM": {
-          "pass": false
+          "pass": true
         },
         "S&P": {
-          "pass": false
+          "pass": true
         },
         "Malaysia": {
           "pass": true
@@ -645,24 +686,29 @@
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.0851,
-        "RC_actif": null,
-        "RL_actif": 0.2443
+        "RE_FTSE": 0.0851,
+        "RC_FTSE": 0.0,
+        "RL_FTSE": 0.2443,
+        "RE_DJIM": 0.0851,
+        "RC_DJIM": 0.0,
+        "RL_DJIM": 0.2443
       }
     },
     "PRSC": {
-      "compatible": false,
-      "n_standards": 2,
+      "compatible": true,
+      "n_standards": 4,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": true
         },
         "DJIM": {
-          "pass": false
+          "pass": true
         },
         "S&P": {
-          "pass": false
+          "pass": true
         },
         "Malaysia": {
           "pass": true
@@ -670,15 +716,20 @@
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.0403,
-        "RC_actif": 0.2723,
-        "RL_actif": 0.0459
+        "RE_FTSE": 0.0403,
+        "RC_FTSE": 0.2723,
+        "RL_FTSE": 0.0459,
+        "RE_DJIM": 0.0403,
+        "RC_DJIM": 0.2723,
+        "RL_DJIM": 0.0459
       }
     },
     "NEIC": {
       "compatible": false,
       "n_standards": 0,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": false
@@ -695,15 +746,20 @@
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.0115,
-        "RC_actif": 0.3147,
-        "RL_actif": 0.5615
+        "RE_FTSE": 0.0115,
+        "RC_FTSE": 0.3147,
+        "RL_FTSE": 0.5615,
+        "RE_DJIM": 0.0115,
+        "RC_DJIM": 0.3147,
+        "RL_DJIM": 0.5615
       }
     },
     "SCRC": {
       "compatible": false,
       "n_standards": 0,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": false
@@ -720,18 +776,53 @@
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.5872,
-        "RC_actif": 0.0173,
-        "RL_actif": 0.0289
+        "RE_FTSE": 0.5872,
+        "RC_FTSE": 0.0173,
+        "RL_FTSE": 0.0289,
+        "RE_DJIM": 0.5872,
+        "RC_DJIM": 0.0173,
+        "RL_DJIM": 0.0289
       }
     },
     "ORAC": {
-      "compatible": false,
-      "n_standards": 2,
+      "compatible": true,
+      "n_standards": 4,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": true
+        },
+        "DJIM": {
+          "pass": true
+        },
+        "S&P": {
+          "pass": true
+        },
+        "Malaysia": {
+          "pass": true
+        }
+      },
+      "source": "screening_file",
+      "ratios": {
+        "RE_FTSE": 0.1621,
+        "RC_FTSE": 0.0949,
+        "RL_FTSE": 0.0884,
+        "RE_DJIM": 0.1621,
+        "RC_DJIM": 0.0949,
+        "RL_DJIM": 0.0884
+      }
+    },
+    "SICC": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": null,
+      "excluded": false,
+      "donnees_manquantes": true,
+      "standards": {
+        "FTSE": {
+          "pass": false
         },
         "DJIM": {
           "pass": false
@@ -740,44 +831,18 @@
           "pass": false
         },
         "Malaysia": {
-          "pass": true
+          "pass": false
         }
       },
       "source": "screening_file",
-      "ratios": {
-        "RE_actif": 0.1621,
-        "RC_actif": 0.0949,
-        "RL_actif": 0.0884
-      }
-    },
-    "SICC": {
-      "compatible": true,
-      "n_standards": 4,
-      "halal_sector": true,
-      "standards": {
-        "DJIM": {
-          "pass": true
-        },
-        "FTSE": {
-          "pass": true
-        },
-        "S&P": {
-          "pass": true
-        },
-        "AAOIFI": {
-          "pass": true
-        }
-      },
-      "ratios": {
-        "RE_actif": 0.0,
-        "RC_actif": 0.0,
-        "RL_actif": 0.0
-      }
+      "ratios": {}
     },
     "SOGB": {
       "compatible": true,
       "n_standards": 4,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": true
@@ -794,15 +859,20 @@
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.0001,
-        "RC_actif": 0.0889,
-        "RL_actif": 0.0584
+        "RE_FTSE": 0.0001,
+        "RC_FTSE": 0.0889,
+        "RL_FTSE": 0.0584,
+        "RE_DJIM": 0.0001,
+        "RC_DJIM": 0.0889,
+        "RL_DJIM": 0.0584
       }
     },
     "SPHC": {
       "compatible": true,
       "n_standards": 4,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": true
@@ -819,18 +889,23 @@
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.1576,
-        "RC_actif": 0.1467,
-        "RL_actif": 0.003
+        "RE_FTSE": 0.1576,
+        "RC_FTSE": 0.1467,
+        "RL_FTSE": 0.003,
+        "RE_DJIM": 0.1576,
+        "RC_DJIM": 0.1467,
+        "RL_DJIM": 0.003
       }
     },
     "ABJC": {
       "compatible": false,
-      "n_standards": 0,
+      "n_standards": 2,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
-          "pass": false
+          "pass": true
         },
         "DJIM": {
           "pass": false
@@ -839,14 +914,17 @@
           "pass": false
         },
         "Malaysia": {
-          "pass": false
+          "pass": true
         }
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.0479,
-        "RC_actif": 0.3477,
-        "RL_actif": 0.4373
+        "RE_FTSE": 0.0479,
+        "RC_FTSE": 0.3477,
+        "RL_FTSE": 0.4373,
+        "RE_DJIM": 0.0479,
+        "RC_DJIM": 0.3477,
+        "RL_DJIM": 0.4373
       }
     },
     "CFAC": {
@@ -874,18 +952,20 @@
       }
     },
     "SHEC": {
-      "compatible": false,
-      "n_standards": 2,
+      "compatible": true,
+      "n_standards": 4,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": true
         },
         "DJIM": {
-          "pass": false
+          "pass": true
         },
         "S&P": {
-          "pass": false
+          "pass": true
         },
         "Malaysia": {
           "pass": true
@@ -893,15 +973,20 @@
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.0624,
-        "RC_actif": 0.1901,
-        "RL_actif": 0.0263
+        "RE_FTSE": 0.0624,
+        "RC_FTSE": 0.1901,
+        "RL_FTSE": 0.0263,
+        "RE_DJIM": 0.0624,
+        "RC_DJIM": 0.1901,
+        "RL_DJIM": 0.0263
       }
     },
     "TTLS": {
       "compatible": false,
       "n_standards": 2,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": true
@@ -918,24 +1003,29 @@
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.0326,
-        "RC_actif": 0.496,
-        "RL_actif": 0.1298
+        "RE_FTSE": 0.0326,
+        "RC_FTSE": 0.496,
+        "RL_FTSE": 0.1298,
+        "RE_DJIM": 0.0326,
+        "RC_DJIM": 0.496,
+        "RL_DJIM": 0.1298
       }
     },
     "ONTBF": {
-      "compatible": false,
-      "n_standards": 2,
+      "compatible": true,
+      "n_standards": 4,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": true
         },
         "DJIM": {
-          "pass": false
+          "pass": true
         },
         "S&P": {
-          "pass": false
+          "pass": true
         },
         "Malaysia": {
           "pass": true
@@ -943,15 +1033,20 @@
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.2145,
-        "RC_actif": 0.1502,
-        "RL_actif": 0.1861
+        "RE_FTSE": 0.2145,
+        "RC_FTSE": 0.1502,
+        "RL_FTSE": 0.1861,
+        "RE_DJIM": 0.2145,
+        "RC_DJIM": 0.1502,
+        "RL_DJIM": 0.1861
       }
     },
     "SDCC": {
       "compatible": false,
       "n_standards": 1,
       "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
       "standards": {
         "FTSE": {
           "pass": false
@@ -968,66 +1063,23 @@
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.1539,
-        "RC_actif": 0.8227,
-        "RL_actif": 0.0243
+        "RE_FTSE": 0.1539,
+        "RC_FTSE": 0.8227,
+        "RL_FTSE": 0.0243,
+        "RE_DJIM": 0.1539,
+        "RC_DJIM": 0.8227,
+        "RL_DJIM": 0.0243
       }
     },
     "SDSC": {
-      "compatible": true,
-      "n_standards": 4,
-      "halal_sector": true,
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": null,
+      "excluded": false,
+      "donnees_manquantes": true,
       "standards": {
-        "DJIM": {
-          "pass": true
-        },
-        "FTSE": {
-          "pass": true
-        },
-        "S&P": {
-          "pass": true
-        },
-        "AAOIFI": {
-          "pass": true
-        }
-      },
-      "ratios": {
-        "RE_actif": 0.0851,
-        "RC_actif": 0.0,
-        "RL_actif": 0.2443
-      }
-    },
-    "SVOC": {
-      "compatible": true,
-      "n_standards": 3,
-      "halal_sector": true,
-      "standards": {
-        "DJIM": {
-          "pass": true
-        },
         "FTSE": {
           "pass": false
-        },
-        "S&P": {
-          "pass": true
-        },
-        "AAOIFI": {
-          "pass": true
-        }
-      },
-      "ratios": {
-        "RE_actif": 0.1783,
-        "RC_actif": 0.3929,
-        "RL_actif": 0.2395
-      }
-    },
-    "CABC": {
-      "compatible": false,
-      "n_standards": 2,
-      "halal_sector": true,
-      "standards": {
-        "FTSE": {
-          "pass": true
         },
         "DJIM": {
           "pass": false
@@ -1036,14 +1088,63 @@
           "pass": false
         },
         "Malaysia": {
+          "pass": false
+        }
+      },
+      "source": "screening_file",
+      "ratios": {}
+    },
+    "SVOC": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": null,
+      "excluded": false,
+      "donnees_manquantes": true,
+      "standards": {
+        "FTSE": {
+          "pass": false
+        },
+        "DJIM": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "Malaysia": {
+          "pass": false
+        }
+      },
+      "source": "screening_file",
+      "ratios": {}
+    },
+    "CABC": {
+      "compatible": true,
+      "n_standards": 3,
+      "halal_sector": true,
+      "excluded": false,
+      "illicit_ratio": 0.0,
+      "standards": {
+        "FTSE": {
+          "pass": true
+        },
+        "DJIM": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": true
+        },
+        "Malaysia": {
           "pass": true
         }
       },
       "source": "screening_file",
       "ratios": {
-        "RE_actif": 0.1783,
-        "RC_actif": 0.3929,
-        "RL_actif": 0.2395
+        "RE_FTSE": 0.1783,
+        "RC_FTSE": 0.3929,
+        "RL_FTSE": 0.2395,
+        "RE_DJIM": 0.1783,
+        "RC_DJIM": 0.3929,
+        "RL_DJIM": 0.2395
       }
     },
     "FTSC": {
@@ -1069,6 +1170,52 @@
         "RC_actif": 0.0,
         "RL_actif": 0.0
       }
+    },
+    "SEMC": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": null,
+      "excluded": false,
+      "donnees_manquantes": true,
+      "standards": {
+        "FTSE": {
+          "pass": false
+        },
+        "DJIM": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "Malaysia": {
+          "pass": false
+        }
+      },
+      "source": "screening_file",
+      "ratios": {}
+    },
+    "TTRC": {
+      "compatible": false,
+      "n_standards": 0,
+      "halal_sector": null,
+      "excluded": false,
+      "donnees_manquantes": true,
+      "standards": {
+        "FTSE": {
+          "pass": false
+        },
+        "DJIM": {
+          "pass": false
+        },
+        "S&P": {
+          "pass": false
+        },
+        "Malaysia": {
+          "pass": false
+        }
+      },
+      "source": "screening_file",
+      "ratios": {}
     }
   }
 }
