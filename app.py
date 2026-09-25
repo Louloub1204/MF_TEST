@@ -778,20 +778,105 @@ def run_optimization_pipeline(mf_scores, data, factor_results,
 
 # ─── MULTIFACTOR & PORTFOLIO ──────────────────────────────────
 
-def compute_multifactor(factor_results, betas):
+def compute_multifactor(factor_results, betas, renormalize=False):
+    """
+    MF(t,T) = Σ β_i · F_i(t,T)
+
+    renormalize=False (défaut, conforme note technique) :
+        les facteurs manquants comptent pour 0. Un titre couvert par 2 facteurs
+        sur 5 est donc mécaniquement pénalisé face à un titre couvert par 5.
+
+    renormalize=True :
+        le score est divisé par la somme des β des facteurs réellement
+        disponibles pour ce titre. Un nouvel admis à la cote (historique court)
+        devient comparable aux titres établis, sur les facteurs calculables.
+    """
     all_t = set()
     for df in factor_results.values():
         if df is not None:
             all_t.update(df.index)
-    mf = pd.Series(0.0, index=list(all_t))
+    if not all_t:
+        return pd.Series(dtype=float)
+
+    mf       = pd.Series(0.0, index=list(all_t))
+    beta_cov = pd.Series(0.0, index=list(all_t))   # Σ β des facteurs couverts
+
     for fname, df in factor_results.items():
         if df is None:
             continue
         sc = [c for c in df.columns if "Score" in c]
         if not sc:
             continue
-        mf = mf.add(df[sc[0]] * betas.get(fname, 0), fill_value=0)
+        b = betas.get(fname, 0)
+        mf = mf.add(df[sc[0]] * b, fill_value=0)
+        beta_cov = beta_cov.add(
+            pd.Series(b, index=df[sc[0]].dropna().index), fill_value=0)
+
+    if renormalize:
+        beta_cov = beta_cov.replace(0, np.nan)
+        mf = (mf / beta_cov).replace([np.inf, -np.inf], np.nan).dropna()
+
     return mf.sort_values(ascending=False)
+
+
+def factor_coverage_report(data, factor_results, mf_scores=None):
+    """
+    Pour chaque ticker de la feuille Cours : sa couverture factorielle,
+    son nombre d'observations de cours, et le motif d'exclusion éventuel.
+
+    Permet d'identifier immédiatement pourquoi un titre (nouvel admis à la
+    cote, titre suspendu, colonne manquante dans une feuille source)
+    n'apparaît pas dans l'indice MF ni dans l'allocation.
+    """
+    FACTORS = ["Value", "Momentum", "Volatilité", "Dividende", "Liquidité"]
+    cours   = data["cours"].apply(pd.to_numeric, errors="coerce")
+    nb      = data.get("nb_titres", {})
+    moy     = data.get("moyenne_cours", pd.DataFrame())
+    moy_cols = set(moy.columns) if isinstance(moy, pd.DataFrame) else set()
+
+    rows = []
+    for t in data.get("tickers", []):
+        n_cours = int(cours[t].notna().sum()) if t in cours.columns else 0
+        present = {f: (factor_results.get(f) is not None
+                       and t in factor_results[f].index)
+                   for f in FACTORS}
+        n_cov = sum(present.values())
+
+        # Motif — du plus bloquant au moins bloquant
+        if n_cov == 0:
+            if n_cours == 0:
+                motif = "Aucun cours dans la feuille Cours"
+            elif n_cours == 1:
+                motif = "1 seul cours — rendement et volatilité incalculables"
+            elif n_cours < 20:
+                motif = f"Historique trop court ({n_cours} cours)"
+            elif t not in nb or nb.get(t, 0) <= 0:
+                motif = "Nombre de titres absent ou nul"
+            else:
+                motif = "Aucune métrique valide sur la plage de dates choisie"
+        elif n_cov < len(FACTORS):
+            manquants = [f for f, ok in present.items() if not ok]
+            motif = "Partiel — manque : " + ", ".join(manquants)
+        else:
+            motif = "Couverture complète"
+
+        if moy_cols and t not in moy_cols:
+            motif += " · absent de Moyenne_cours"
+
+        rows.append({
+            "Ticker":       t,
+            "Cours (obs.)": n_cours,
+            "Facteurs":     f"{n_cov}/5",
+            **{f: ("✓" if present[f] else "—") for f in FACTORS},
+            "Dans MF":      "✓" if (mf_scores is not None
+                                    and t in mf_scores.index) else "—",
+            "Diagnostic":   motif,
+            "_n_cov":       n_cov,
+            "_n_cours":     n_cours,
+        })
+
+    return pd.DataFrame(rows).sort_values(
+        ["_n_cov", "_n_cours"], ascending=[True, True])
 
 def optimize_betas_ols(data, train_start, train_end,
                        target_start, target_end, year):
@@ -3352,18 +3437,53 @@ with t6:
                                     st.session_state[km[f]] = round(float(b), 4)
                             st.rerun()
 
-                    # Mise à jour betas_mf pour le calcul MF
-                    betas_mf = betas_opt
-
                     # Mise à jour de betas_mf pour le calcul MF ci-dessous
                     betas_mf = betas_opt
 
         # ── Calcul MF (commun aux deux modes) ─────────────────────
         st.markdown("---")
+
+        renorm_mf = st.toggle(
+            "Renormaliser par la couverture factorielle",
+            value=False, key="mf_renorm",
+            help="OFF (note technique) : un facteur manquant compte pour 0, "
+                 "ce qui pénalise les titres à historique court.  "
+                 "ON : le score est divisé par la somme des β réellement "
+                 "disponibles — utile pour comparer un nouvel admis à la cote "
+                 "aux titres établis sur les seuls facteurs calculables."
+        )
+
         if st.button("🔢 Calculer l'Indice MF", type="primary"):
-            mf = compute_multifactor(fr, betas_mf)
+            mf = compute_multifactor(fr, betas_mf, renormalize=renorm_mf)
             st.session_state.mf_scores = mf
-            st.success(f"✅ {len(mf)} titres classés · β = { {k: round(v,3) for k,v in betas_mf.items()} }")
+            suffixe = " · renormalisé" if renorm_mf else ""
+            st.success(f"✅ {len(mf)} titres classés{suffixe} · "
+                       f"β = { {k: round(v,3) for k,v in betas_mf.items()} }")
+
+        # ── Diagnostic de couverture ──────────────────────────────
+        with st.expander("🔍 Diagnostic — pourquoi un titre n'apparaît pas", expanded=False):
+            st.caption("Couverture factorielle de chaque titre de la feuille Cours. "
+                       "Un titre à 0/5 n'entre ni dans l'indice MF ni dans l'allocation.")
+            cov = factor_coverage_report(data, fr, st.session_state.mf_scores)
+
+            cv1, cv2, cv3 = st.columns(3)
+            cv1.metric("Couverture complète", int((cov["_n_cov"] == 5).sum()))
+            cv2.metric("Couverture partielle",
+                       int(((cov["_n_cov"] > 0) & (cov["_n_cov"] < 5)).sum()))
+            cv3.metric("Non scorés (0/5)", int((cov["_n_cov"] == 0).sum()))
+
+            only_pb = st.checkbox("N'afficher que les titres non ou partiellement couverts",
+                                  value=True, key="cov_only_pb")
+            cov_disp = cov[cov["_n_cov"] < 5] if only_pb else cov
+            st.dataframe(cov_disp.drop(columns=["_n_cov", "_n_cours"]),
+                         width="stretch", hide_index=True)
+
+            buf_cov = io.BytesIO()
+            cov.drop(columns=["_n_cov", "_n_cours"]).to_excel(buf_cov, index=False)
+            st.download_button("⬇️ Exporter le diagnostic (Excel)", buf_cov.getvalue(),
+                               "diagnostic_couverture_BRVM.xlsx",
+                               mime="application/vnd.openxmlformats-officedocument"
+                                    ".spreadsheetml.sheet")
 
         if st.session_state.mf_scores is not None:
             mf = st.session_state.mf_scores
