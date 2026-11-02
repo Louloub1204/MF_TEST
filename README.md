@@ -56,3 +56,7 @@ calculés par formule, part du groupe pour les comptes consolidés) ; une nouvel
 correspondant dans la base au lieu de seulement la compléter. L'ancienne correction automatique des unités par le PER
 est abandonnée. La base SMF et le dernier classeur chargé sont conservés sur GitHub (`data/base_commune.json`,
 `data/etats_financiers_commun.json`).
+
+Réglages facultatifs de l'onglet : fenêtre de régression des bêtas, bêta imposé par titre, pondérations des méthodes
+(entreprises et banques). Les valeurs proposées sont les réglages standards ; tout autre réglage est signalé, car les
+valeurs peuvent alors différer de celles de l'application des fiches de valeur.

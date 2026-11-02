@@ -4090,13 +4090,59 @@ with t8:
         g_lt = pc3.number_input("Croissance perpétuelle (%)", value=vc.PARAMS["croissance_perpetuelle"] * 100,
                                 step=0.25, key="vc_g")
         params = {"prime_risque": prime / 100, "croissance_perpetuelle": g_lt / 100}
-        if abs(prime / 100 - vc.PARAMS["prime_risque"]) > 1e-9 or abs(g_lt / 100 - vc.PARAMS["croissance_perpetuelle"]) > 1e-9:
-            st.warning("Paramètres modifiés : les valeurs ne sont plus alignées avec l'application des fiches de valeur "
-                       "tant que les mêmes paramètres n'y sont pas saisis.")
         st.caption("Taux sans risque : taux souverain du pays de cotation (" +
                    ", ".join(f"{k} {v:.2f}%" for k, v in vc.TAUX_SOUVERAINS.items()) + ").")
 
         av_tickers = sorted(ef_c.keys())
+
+        # ── Bêtas ──────────────────────────────────────────────────
+        with st.expander("📐 Ajustement des bêtas", expanded=False):
+            mode_b = st.radio("Estimation du bêta",
+                              ["Régression hebdomadaire sur les 2 ans précédant la date d'arrêté (standard)",
+                               "Régression sur une fenêtre choisie"], key="vc_beta_mode")
+            if mode_b.startswith("Régression sur"):
+                c_min_v = base_c.cours.index.min().date()
+                bw1, bw2 = st.columns(2)
+                b_deb = bw1.date_input("Début de la fenêtre", value=max(c_min_v, datetime.date(d_def.year - 3, 1, 1)),
+                                       min_value=c_min_v, max_value=d_def, format="DD/MM/YYYY", key="vc_beta_deb")
+                b_fin = bw2.date_input("Fin de la fenêtre", value=d_def, min_value=c_min_v, max_value=d_def,
+                                       format="DD/MM/YYYY", key="vc_beta_fin")
+                if b_deb < b_fin:
+                    params["beta_debut"], params["beta_fin"] = b_deb, b_fin
+                else:
+                    st.error("La date de début doit précéder la date de fin.")
+            st.caption("Bêta imposé par titre (laisser vide pour le bêta estimé). Bêta estimé : régression hebdomadaire "
+                       "contre le BRVM Composite, ajustée (Blume), bornée 0,6-1,4.")
+            est = {t: vc.beta(base_c, t, date_arrete, {**vc.PARAMS, **params})[0] for t in av_tickers}
+            df_b = pd.DataFrame({"Ticker": av_tickers, "Bêta estimé": [round(est[t], 2) for t in av_tickers],
+                                 "Bêta imposé": [None] * len(av_tickers)})
+            ed_b = st.data_editor(df_b, hide_index=True, width="stretch", key="vc_beta_editor",
+                                  disabled=["Ticker", "Bêta estimé"],
+                                  column_config={"Bêta imposé": st.column_config.NumberColumn(
+                                      min_value=0.1, max_value=3.0, step=0.05, format="%.2f")})
+            man = {r["Ticker"]: float(r["Bêta imposé"]) for _, r in ed_b.iterrows()
+                   if pd.notna(r["Bêta imposé"]) and float(r["Bêta imposé"]) > 0}
+            if man:
+                params["beta_manuel"] = man
+
+        # ── Pondérations des méthodes ─────────────────────────────
+        with st.expander("⚖️ Pondérations des méthodes", expanded=False):
+            st.caption("Poids renormalisés sur les méthodes applicables ; 0 écarte la méthode. Les valeurs proposées "
+                       "sont les réglages standards, identiques dans l'application des fiches de valeur.")
+            for fam, lib in (("poids_entreprise", "Entreprises"), ("poids_banque", "Banques")):
+                st.markdown(f"**{lib}**")
+                std_w = vc.PARAMS[fam]
+                cw = st.columns(len(std_w))
+                params[fam] = {m: cw[i].number_input(m, min_value=0.0, max_value=100.0, value=float(v), step=5.0,
+                                                     key=f"vc_{fam}_{m}") for i, (m, v) in enumerate(std_w.items())}
+
+        ecarts = vc.ecarts_reglages(params)
+        if ecarts:
+            st.warning("Réglages non standards (" + " ; ".join(ecarts) + ") : les valeurs peuvent différer de celles "
+                       "de l'application des fiches de valeur, sauf si les mêmes réglages y sont saisis.")
+        else:
+            st.success("Réglages standards : valeurs alignées sur l'application des fiches de valeur.")
+
         sel_tickers = st.multiselect("Titres à valoriser", options=av_tickers, default=av_tickers)
 
         if st.button("📈 Calculer les valeurs fondamentales", type="primary"):
@@ -4109,6 +4155,9 @@ with t8:
             st.markdown("---")
             st.markdown("**📋 Synthèse — valeurs fondamentales et potentiels**")
             noms = ["PER", "P/B", "Dividendes", "DCF", "P/B justifié"]
+            if any(not r.reglages_standards for r in val.values()):
+                st.info("Valeurs calculées avec des réglages non standards : " +
+                        " ; ".join(next(r.ecarts_reglages for r in val.values() if not r.reglages_standards)) + ".")
             rows = []
             for t, r in val.items():
                 m = {x.nom: x.valeur for x in r.methodes}
@@ -4163,7 +4212,8 @@ with t8:
                 det = [{"Ticker": t, "Méthode": x.nom, "Valeur (FCFA)": round(x.valeur), "Poids": x.poids,
                         "Détail": x.detail} for t, rr in val.items() for x in rr.methodes]
                 pd.DataFrame(det).to_excel(xw, sheet_name="Méthodes", index=False)
-                prm = [{"Ticker": t, "Date d'arrêté": rr.date_arrete, "Exercice": rr.annee_ref, "Cours": rr.cours,
+                prm = [{"Ticker": t, "Date d'arrêté": rr.date_arrete,
+                        "Réglages": "standards" if rr.reglages_standards else " ; ".join(rr.ecarts_reglages), "Exercice": rr.annee_ref, "Cours": rr.cours,
                         "Valeur fondamentale": rr.valeur, "Potentiel": rr.potentiel, "Bêta": rr.beta,
                         "Source du bêta": rr.beta_source, "k": rr.k, "g": rr.g, "CMPC": rr.cmpc,
                         "PER cible": rr.pe_cible, "P/B cible": rr.pb_cible, "DPA retenu": rr.dpa,
