@@ -29,6 +29,8 @@ DATA_FILES = {
     "smf":     "data/smf_data.parquet",
     "fin_db":  "data/financial_db.json",
     "charia":  "data/charia_results.json",
+    "base_commune": "data/base_commune.json",              # base SMF lue par le moteur commun de valorisation
+    "ef_commun":    "data/etats_financiers_commun.json",   # dernier classeur d'états financiers (moteur commun)
 }
 
 
@@ -270,3 +272,22 @@ def is_github_configured() -> bool:
     """Vérifie si la config GitHub est disponible."""
     token, repo, _ = _get_config()
     return bool(token and repo)
+
+
+# ── Moteur commun de valorisation (base SMF et états financiers) ─────
+
+def save_text(key: str, text: str) -> bool:
+    try:
+        return push_file(text.encode("utf-8"), DATA_FILES[key],
+                         f"data: {key} {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    except Exception as e:
+        st.warning(f"⚠️ Sauvegarde GitHub ({key}) : {e}")
+        return False
+
+
+def load_text(key: str) -> str | None:
+    try:
+        raw = pull_file(DATA_FILES[key])
+        return raw.decode("utf-8") if raw else None
+    except Exception:
+        return None

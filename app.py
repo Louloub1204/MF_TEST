@@ -28,7 +28,7 @@ try:
     from github_storage import (save_smf_data, load_smf_data,
                                  save_financial_db_github, load_financial_db_github,
                                  save_charia_results, load_charia_results,
-                                 is_github_configured)
+                                 is_github_configured, save_text, load_text)
     GITHUB_STORAGE = True
 except ImportError:
     GITHUB_STORAGE = False
@@ -53,6 +53,12 @@ try:
 except ImportError as _e:
     VALUATION_AVAILABLE = False
     _VALUATION_ERROR = str(_e)
+try:
+    import valorisation_commune as vc     # moteur commun aux applications SMF et Fiches de valeur
+    MOTEUR_COMMUN = True
+except ImportError as _e:
+    MOTEUR_COMMUN = False
+    _MOTEUR_ERROR = str(_e)
 warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="CGF Gestion · SMF BRVM", page_icon="📊",
@@ -1310,6 +1316,16 @@ if not st.session_state.github_loaded and GITHUB_STORAGE:
             if fin_gh:
                 st.session_state.fin_data = fin_gh
 
+        # 2 bis. Moteur commun de valorisation : base SMF et classeur d'états financiers tels que chargés
+        if MOTEUR_COMMUN and st.session_state.get("base_commune") is None:
+            _txt = load_text("base_commune")
+            if _txt:
+                st.session_state.base_commune = vc.base_depuis_json(_txt)
+        if MOTEUR_COMMUN and st.session_state.get("ef_commun") is None:
+            _txt = load_text("ef_commun")
+            if _txt:
+                st.session_state.ef_commun = vc.ef_depuis_json(_txt)
+
         # 3. Charia (stocké temporairement, fusionné avec exclusions fixes ensuite)
         charia_gh = load_charia_results()
         if charia_gh:
@@ -1400,7 +1416,12 @@ with st.sidebar:
             st.caption("⚙️ Configurez GitHub Secrets pour la persistance")
     if uploaded:
         try:
-            st.session_state.data = load_data(uploaded.read())
+            _bytes = uploaded.getvalue()
+            st.session_state.data = load_data(_bytes)
+            if MOTEUR_COMMUN:
+                st.session_state.base_commune = vc.lire_base_smf(_bytes)
+                if GITHUB_STORAGE and is_github_configured():
+                    save_text("base_commune", vc.base_vers_json(st.session_state.base_commune))
             n_tickers = len(st.session_state.data['tickers'])
             st.success(f"✅ {n_tickers} titres chargés")
             # Auto-sauvegarde GitHub silencieuse (pas de spinner = pas de rerun)
@@ -3645,26 +3666,25 @@ with t7:
                     )
                     if fs_file:
                         with st.spinner("Parsing des états financiers..."):
-                            new_data = parse_financial_file(fs_file)
                             nb_titres_tmp = st.session_state.data.get("nb_titres", {}) \
                                             if st.session_state.data else {}
-                            cours_tmp     = st.session_state.data.get("cours", pd.DataFrame()) \
-                                            if st.session_state.data else pd.DataFrame()
                             moy_tmp       = st.session_state.data.get("moyenne_cours", pd.DataFrame()) \
                                             if st.session_state.data else pd.DataFrame()
-                            if nb_titres_tmp and not cours_tmp.empty:
-                                from fs_parser import validate_and_fix_units
-                                new_data, corrections = validate_and_fix_units(
-                                    new_data, nb_titres_tmp, cours_tmp
-                                )
-                                if corrections:
-                                    st.warning(
-                                        "⚠️ Correction unités : "
-                                        + ", ".join(f"{t} (PE {v['pe_avant']}x→{v['pe_apres']}x)"
-                                                    for t, v in corrections.items())
-                                    )
+                            if MOTEUR_COMMUN:
+                                # lecteur commun aux deux applications (unités, sous-totaux calculés par formule,
+                                # part du groupe) : il remplace l'ancien parseur et sa correction d'unités par le PER
+                                ef_new = vc.lire_etats_financiers(fs_file.getvalue())
+                                st.session_state.ef_commun = ef_new
+                                new_data = vc.ef_vers_fin_data(ef_new)
+                                if GITHUB_STORAGE and is_github_configured():
+                                    save_text("ef_commun", vc.ef_vers_json(ef_new))
+                            else:
+                                new_data = parse_financial_file(fs_file)
                             existing_fd = load_financial_db(VALUATION_DB_PATH)
-                            merged_fd   = merge_financial_data(existing_fd, new_data)
+                            # une nouvelle publication remplace l'exercice correspondant (au lieu de le compléter)
+                            merged_fd = {t: dict(y) for t, y in existing_fd.items()}
+                            for t_, yrs_ in new_data.items():
+                                merged_fd.setdefault(t_, {}).update(yrs_)
                             save_financial_db(merged_fd, VALUATION_DB_PATH)
                             st.session_state.fin_data = merged_fd
 
@@ -4032,833 +4052,130 @@ with t7:
 
 # ══ VALORISATION ═══════════════════════════════════════════════
 with t8:
-    st.markdown("<span class='pill'>Valorisation · Prix Cible</span><p class='sh'>Modèles de valorisation théorique</p>", unsafe_allow_html=True)
-    st.markdown("""<div class='fbox'>
-    DDM · P/E relatif · P/B · DCF simplifié → Prix cible combiné par titre<br>
-    Les états financiers et le screening Charia se chargent depuis l'onglet 📂 Portefeuille
+    st.markdown("<span class='pill'>Valorisation · Valeur fondamentale</span><p class='sh'>Moteur commun SMF · Fiches de valeur</p>", unsafe_allow_html=True)
+    if not MOTEUR_COMMUN:
+        st.error("❌ Module valorisation_commune.py introuvable à la racine du dépôt.")
+        st.code(_MOTEUR_ERROR if '_MOTEUR_ERROR' in dir() else "Erreur inconnue")
+        st.stop()
+    st.markdown(f"""<div class='fbox'>
+    Valeur fondamentale calculée par le <b>moteur commun v{vc.VERSION}</b> (empreinte <b>{vc.empreinte_moteur()}</b>),
+    identique à celui de l'application des fiches de valeur : à fichiers et date d'arrêté identiques, les deux
+    applications affichent la même valeur.<br>
+    PER et P/B historiques du titre · actualisation des dividendes à deux étapes · DCF (entreprises) ou P/B justifié
+    (banques) · bêta hebdomadaire 2 ans contre le BRVM Composite · taux souverain du pays + prime de risque.
     </div>""", unsafe_allow_html=True)
 
-    if not VALUATION_AVAILABLE:
-        st.error("❌ Modules fs_parser.py et valuation_models.py introuvables.")
-        st.code(_VALUATION_ERROR if '_VALUATION_ERROR' in dir() else "Erreur inconnue")
-        st.info("Vérifiez que fs_parser.py et valuation_models.py sont à la racine du dépôt GitHub (même niveau que app.py).")
-        st.stop()
+    base_c = st.session_state.get("base_commune")
+    ef_c = st.session_state.get("ef_commun")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Sociétés (états financiers)", len(ef_c) if ef_c else 0)
+    c2.metric("Dernière séance de la base", base_c.derniere_date.strftime("%d/%m/%Y") if base_c and base_c.derniere_date else "—")
+    c3.metric("Empreinte du moteur", vc.empreinte_moteur())
+    if base_c is None:
+        st.info("📂 Chargez la **Base de données - SMF** dans la barre latérale (le moteur commun la lit directement).")
+    if not ef_c:
+        st.info("📂 Chargez le classeur des **états financiers** dans l'onglet **📂 Portefeuille**.")
 
-    # ── Statut de la base états financiers ──────────────────────
-    st.markdown("**📁 États Financiers — Base actuelle**")
-    fin_data = st.session_state.fin_data
-    if fin_data:
-        all_years = sorted({yr for t in fin_data.values() for yr in t.keys()})
-        n_charia  = len(get_charia_compatible_tickers(
-                          st.session_state.charia_results)) \
-                    if CHARIA_AVAILABLE else 0
-        sc1, sc2, sc3 = st.columns(3)
-        sc1.metric("Sociétés en base", len(fin_data))
-        sc2.metric("Années disponibles", f"{min(all_years)}–{max(all_years)}")
-        sc3.metric("☪️ Charia compatibles", n_charia)
-        if os.path.exists(VALUATION_DB_PATH):
-            db_data = json.load(open(VALUATION_DB_PATH))
-            st.caption(f"Dernière mise à jour : {db_data.get('metadata',{}).get('last_updated','—')[:10]}")
-    else:
-        st.info("📂 Aucune donnée en base. Rendez-vous dans l'onglet **📂 Portefeuille** "
-                "pour charger le fichier **Etats_Financiers_BRVM.xlsx**.")
-
-    _has_fin_data = bool(fin_data)
-
-    if _has_fin_data:
+    if base_c is not None and ef_c:
         st.markdown("---")
+        pc1, pc2, pc3 = st.columns(3)
+        d_def = base_c.derniere_date or datetime.date.today()
+        date_arrete = pc1.date_input("Date d'arrêté", value=d_def, max_value=d_def, format="DD/MM/YYYY",
+                                     key="vc_date_arrete",
+                                     help="Exercices clos à cette date, dividendes payés à cette date (exercice N réputé "
+                                          "payé le 1er juillet N+1), cours jusqu'à cette date. Par défaut : dernière "
+                                          "séance de la base, comme dans l'application des fiches de valeur.")
+        prime = pc2.number_input("Prime de risque actions (%)", value=vc.PARAMS["prime_risque"] * 100, step=0.25,
+                                 key="vc_prime")
+        g_lt = pc3.number_input("Croissance perpétuelle (%)", value=vc.PARAMS["croissance_perpetuelle"] * 100,
+                                step=0.25, key="vc_g")
+        params = {"prime_risque": prime / 100, "croissance_perpetuelle": g_lt / 100}
+        if abs(prime / 100 - vc.PARAMS["prime_risque"]) > 1e-9 or abs(g_lt / 100 - vc.PARAMS["croissance_perpetuelle"]) > 1e-9:
+            st.warning("Paramètres modifiés : les valeurs ne sont plus alignées avec l'application des fiches de valeur "
+                       "tant que les mêmes paramètres n'y sont pas saisis.")
+        st.caption("Taux sans risque : taux souverain du pays de cotation (" +
+                   ", ".join(f"{k} {v:.2f}%" for k, v in vc.TAUX_SOUVERAINS.items()) + ").")
 
-        # ── Info calibrage automatique ─────────────────────────────
-        st.markdown("""<div class='fbox'>
-        🤖 <b>Calibrage 100% automatique</b> — Zéro saisie manuelle<br>
+        av_tickers = sorted(ef_c.keys())
+        sel_tickers = st.multiselect("Titres à valoriser", options=av_tickers, default=av_tickers)
 
-        β calculé depuis cours historiques · ke/WACC via CAPM · kd depuis états financiers<br>
-        P/E et P/B calibrés sur les multiples historiques observés du titre · g_FCF = CAGR Rex/RN
-        </div>""", unsafe_allow_html=True)
+        if st.button("📈 Calculer les valeurs fondamentales", type="primary"):
+            with st.spinner(f"Valorisation de {len(sel_tickers)} titres..."):
+                st.session_state.val_commune = {
+                    t: vc.valeur_fondamentale(t, ef_c, base_c, date_arrete, params) for t in sel_tickers}
 
-        st.markdown("**📅 Fenêtre de calcul du Beta (β)**")
-        st.caption("Le beta mesure la sensibilité du titre au marché BRVM sur la période choisie. "
-                   "Une fenêtre longue (3–5 ans) donne un beta stable · courte (6–12 mois) capture le beta récent.")
-
-        c_min_v = data["cours"].index.min().date() if st.session_state.data else pd.Timestamp("2014-01-01").date()
-        c_max_v = data["cours"].index.max().date() if st.session_state.data else pd.Timestamp("2026-01-01").date()
-
-        bc1, bc2, bc3 = st.columns(3)
-        with bc1:
-            beta_start = st.date_input(
-                "Début fenêtre β", key="beta_start",
-                value=max(c_min_v, min(c_max_v, pd.Timestamp("2022-01-01").date())),
-                min_value=c_min_v, max_value=max(c_max_v, datetime.date.today()),
-                help="Date de début pour estimer le beta"
-            )
-        with bc2:
-            beta_end = st.date_input(
-                "Fin fenêtre β", key="beta_end",
-                value=c_max_v,
-                min_value=c_min_v, max_value=max(c_max_v, datetime.date.today()),
-                help="Date de fin pour estimer le beta (en général = aujourd'hui)"
-            )
-        with bc3:
-            if beta_start < beta_end and st.session_state.data:
-                cours_tmp  = st.session_state.data["cours"]
-                mask_beta  = (cours_tmp.index >= pd.to_datetime(beta_start)) & \
-                             (cours_tmp.index <= pd.to_datetime(beta_end))
-                n_jours = mask_beta.sum()
-                st.markdown("<br>", unsafe_allow_html=True)
-                st.success(f"✅ **{n_jours}** jours de trading\n\n"
-                           f"≈ {n_jours//252} an(s) {(n_jours%252)//21} mois")
-            elif beta_start >= beta_end:
-                st.markdown("<br>", unsafe_allow_html=True)
-                st.error("⚠️ Date début ≥ Date fin")
-
-        st.markdown("---")
-
-        ac1, ac2 = st.columns(2)
-        with ac1:
-            dcf_horizon = st.slider(
-                "Horizon DCF (ans)", 3, 10, 5, 1, key="dcf_h",
-                help="Nombre d'années de projection explicite. La valeur terminale couvre l'infini."
-            )
-        with ac2:
-            st.markdown("**Poids des modèles (renormalisés si modèle absent)**")
-            wp1, wp2, wp3, wp4 = st.columns(4)
-            w_ddm = wp1.number_input("DDM",  0.0,1.0,0.20,0.05,key="w_ddm")
-            w_pe  = wp2.number_input("P/E",  0.0,1.0,0.30,0.05,key="w_pe")
-            w_pb  = wp3.number_input("P/B",  0.0,1.0,0.20,0.05,key="w_pb")
-            w_dcf = wp4.number_input("DCF",  0.0,1.0,0.30,0.05,key="w_dcf")
-        model_weights = {"DDM": w_ddm, "P/E": w_pe, "P/B": w_pb, "DCF": w_dcf}
-
-        st.markdown("---")
-
-        # ── Sélection des titres ────────────────────────────────────
-        av_tickers = sorted(fin_data.keys())
-        if st.session_state.data:
-            cours_tickers = st.session_state.data.get("tickers", [])
-            common   = [t for t in av_tickers if t in cours_tickers]
-            only_fs  = [t for t in av_tickers if t not in cours_tickers]
-        else:
-            common, only_fs = av_tickers, []
-
-        sel_tickers = st.multiselect(
-            "Titres à valoriser",
-            options=av_tickers,
-            default=common[:15] if len(common) >= 15 else common,
-            help="Titres disponibles dans les états financiers chargés"
-        )
-
-        if st.button("📈 Calculer les valorisations", type="primary"):
-            if not sel_tickers:
-                st.warning("Sélectionnez au moins un titre.")
-            else:
-                nb_titres  = st.session_state.data.get("nb_titres",  {}) if st.session_state.data else {}
-                dividendes = st.session_state.data.get("dividendes", pd.DataFrame()) if st.session_state.data else pd.DataFrame()
-                cours_df   = st.session_state.data.get("cours",      pd.DataFrame()) if st.session_state.data else pd.DataFrame()
-                moy_cours  = st.session_state.data.get("moyenne_cours", pd.DataFrame()) if st.session_state.data else pd.DataFrame()
-
-                # Dividendes → {ticker: {year: montant}}
-                div_hist = {}
-                if not dividendes.empty and "Date" in dividendes.columns:
-                    for _, row in dividendes.iterrows():
-                        yr_d = int(row["Date"])
-                        for t in sel_tickers:
-                            if t in dividendes.columns:
-                                v = row.get(t)
-                                if pd.notna(v) and v > 0:
-                                    div_hist.setdefault(t, {})[yr_d] = float(v)
-
-                results_all = {}
-                params_all  = {}
-                with st.spinner(f"Calibrage auto + valorisation de {len(sel_tickers)} titres..."):
-                    for ticker in sel_tickers:
-                        # ── Calibrage auto de tous les paramètres ──────
-                        try:
-                            from valuation_models import calibrate_params
-                            p = calibrate_params(
-                                ticker, fin_data, nb_titres,
-                                cours_df, moy_cours,
-                                div_history=div_hist.get(ticker),
-                                beta_date_start=beta_start,
-                                beta_date_end=beta_end,
-                            )
-                        except Exception:
-                            p = None
-                        params_all[ticker] = p
-
-                        res = {}
-                        res["DDM"] = valuation_ddm(
-                            ticker, fin_data, div_hist.get(ticker, {}),
-                            nb_titres, cours_df, params=p
-                        )
-                        res["P/E"] = valuation_pe(
-                            ticker, fin_data, nb_titres,
-                            cours_df, moy_cours, params=p
-                        )
-                        res["P/B"] = valuation_pb(
-                            ticker, fin_data, nb_titres,
-                            cours_df, moy_cours, params=p
-                        )
-                        res["DCF"] = valuation_dcf(
-                            ticker, fin_data, nb_titres,
-                            cours_df, horizon=dcf_horizon, params=p
-                        )
-                        p_comb, prices_ok = combined_price(res, model_weights)
-                        results_all[ticker] = {
-                            "modeles":      res,
-                            "prix_cible":   p_comb,
-                            "prix_modeles": prices_ok,
-                            "params":       p,
-                        }
-
-                st.session_state.val_results = results_all
-                st.success(f"✅ Valorisation terminée — {len(results_all)} titres")
-
-        # ── Affichage des résultats ────────────────────────────────
-        if "val_results" in st.session_state and st.session_state.val_results:
-            val      = st.session_state.val_results
-            cours_df = st.session_state.data.get("cours", pd.DataFrame()) if st.session_state.data else pd.DataFrame()
-
+        val = st.session_state.get("val_commune") or {}
+        if val:
             st.markdown("---")
-            st.markdown("**📋 Tableau de synthèse — Prix cibles et potentiels**")
-
+            st.markdown("**📋 Synthèse — valeurs fondamentales et potentiels**")
+            noms = ["PER", "P/B", "Dividendes", "DCF", "P/B justifié"]
             rows = []
-            for ticker, v in val.items():
-                p_comb = v.get("prix_cible")
-                if not p_comb:
-                    continue
-
-                # Cours actuel
-                cours_act = np.nan
-                if not cours_df.empty and ticker in cours_df.columns:
-                    s = cours_df[ticker].dropna()
-                    if not s.empty:
-                        cours_act = float(s.iloc[-1])
-
-                potentiel = (p_comb - cours_act) / cours_act * 100 \
-                            if not np.isnan(cours_act) and cours_act > 0 else np.nan
-                signal = ("🟢 Achat" if potentiel > 10 else
-                          "🔴 Vente" if potentiel < -10 else
-                          "🟡 Neutre") if not np.isnan(potentiel) else "—"
-
-                pm = v.get("prix_modeles", {})
-
-                # Secteur
-                sect = SECTOR_MAP.get(ticker.upper())
-                if not sect:
-                    fd = fin_data.get(ticker, {})
-                    yr_last = max(fd.keys()) if fd else None
-                    sect = fd.get(yr_last, {}).get("secteur", "—") \
-                           if fd and yr_last else "—"
-
-                pot_num = potentiel if not np.isnan(potentiel) else 0
-                charia_lbl = get_charia_label(ticker, st.session_state.charia_results) \
-                             if CHARIA_AVAILABLE else "—"
-
+            for t, r in val.items():
+                m = {x.nom: x.valeur for x in r.methodes}
+                sect = SECTOR_MAP.get(t.upper(), vc.pays_secteur(t)[1])
+                charia_lbl = get_charia_label(t, st.session_state.charia_results) if CHARIA_AVAILABLE else "—"
+                pot = r.potentiel
                 rows.append({
-                    "Ticker":      ticker,
-                    "Secteur":     sect,
-                    "☪️ Charia":   charia_lbl,
-                    "Cours actuel": f"{cours_act:,.0f}" if not np.isnan(cours_act) else "—",
-                    "DDM":          f"{pm.get('DDM',0):,.0f}"  if "DDM" in pm  else "—",
-                    "P/E":          f"{pm.get('P/E',0):,.0f}"  if "P/E" in pm  else "—",
-                    "P/B":          f"{pm.get('P/B',0):,.0f}"  if "P/B" in pm  else "—",
-                    "DCF":          f"{pm.get('DCF',0):,.0f}"  if "DCF" in pm  else "—",
-                    "Prix cible":   f"{p_comb:,.0f}",
-                    "Potentiel":    f"{potentiel:+.1f}%" if not np.isnan(potentiel) else "—",
-                    "Signal":       signal,
-                    "_pot_num":     pot_num,
+                    "Ticker": t, "Secteur": sect, "☪️ Charia": charia_lbl,
+                    "Cours": f"{r.cours:,.0f}" if r.cours else "—",
+                    **{n: (f"{m[n]:,.0f}" if n in m else "—") for n in noms},
+                    "Valeur fondamentale": f"{r.valeur:,.0f}" if r.valeur else "Indéterminable",
+                    "Potentiel": f"{pot * 100:+.1f}%" if pot is not None else "—",
+                    "Signal": ("🟢 Achat" if pot is not None and pot > 0.10 else
+                               "🔴 Vente" if pot is None or pot < -0.10 else "🟡 Neutre"),
+                    "_pot": pot if pot is not None else -9,
                 })
+            df_res = pd.DataFrame(rows).sort_values("_pot", ascending=False)
+            st.dataframe(df_res.drop(columns=["_pot"]), width="stretch", hide_index=True)
+            st.caption("Valeur indéterminable faute d'informations suffisantes : signal de vente par prudence.")
 
-            if not rows:
-                st.warning("Aucun résultat disponible — vérifiez que les nb_titres sont chargés.")
-            else:
-                df_res = pd.DataFrame(rows).sort_values("_pot_num", ascending=False)
-                display_cols = ["Ticker","Secteur","☪️ Charia","Cours actuel",
-                            "DDM","P/E","P/B","DCF","Prix cible","Potentiel","Signal"]
-                st.dataframe(df_res[display_cols], width="stretch", hide_index=True)
-
-                # ── Téléchargement Excel détaillé par titre ────────────
-                st.markdown("**📥 Fichier Excel détaillé par titre**")
-                st.caption("Cliquez sur un ticker pour télécharger son fichier de valorisation détaillé")
-
-                @st.cache_data(show_spinner=False)
-                def build_valuation_excel_cached(ticker, _val_result, _fin_data, _cours_df, cache_key):
-                    """Wrapper caché — cache_key force l'invalidation si les résultats changent."""
-                    return build_valuation_excel(ticker, _val_result, _fin_data, _cours_df)
-
-                def build_valuation_excel(ticker, val_result, fin_data, cours_df):
-                    """
-                    Génère un fichier Excel détaillé de valorisation pour un titre.
-                    4 feuilles : Synthèse · P/E · P/B · DCF (+ DDM si disponible)
-                    Avec les données brutes, les paramètres et les calculs explicités.
-                    """
-                    from openpyxl import Workbook
-                    from openpyxl.styles import (Font, PatternFill, Alignment,
-                                                  Border, Side, numbers)
-                    from openpyxl.utils import get_column_letter
-
-                    wb = Workbook()
-
-                    # ── Styles ──────────────────────────────────────────
-                    HDR_FILL = PatternFill("solid", fgColor="1E3A5F")
-                    HDR_FONT = Font(bold=True, color="FFFFFF", name="Arial", size=10)
-                    SUB_FILL = PatternFill("solid", fgColor="2D5A8E")
-                    SUB_FONT = Font(bold=True, color="FFFFFF", name="Arial", size=9)
-                    BLU_FONT = Font(color="0000FF", name="Arial", size=9)  # Inputs
-                    BLK_FONT = Font(color="000000", name="Arial", size=9)  # Formules
-                    GRN_FONT = Font(color="006400", name="Arial", size=9)  # Liens
-                    BLD_FONT = Font(bold=True, name="Arial", size=9)
-                    NRM_FONT = Font(name="Arial", size=9)
-                    YLW_FILL = PatternFill("solid", fgColor="FFFF00")  # Hypothèses
-                    LBL_FILL = PatternFill("solid", fgColor="EBF5FB")
-                    ALT_FILL = PatternFill("solid", fgColor="F8F9FA")
-                    thin     = Side(style="thin", color="CCCCCC")
-                    BORDER   = Border(left=thin, right=thin, top=thin, bottom=thin)
-                    CNTR     = Alignment(horizontal="center", vertical="center")
-                    RGHT     = Alignment(horizontal="right",  vertical="center")
-                    LEFT     = Alignment(horizontal="left",   vertical="center")
-
-                    def hdr(ws, row, col, val, w=None):
-                        c = ws.cell(row=row, column=col, value=val)
-                        c.font = HDR_FONT; c.fill = HDR_FILL
-                        c.alignment = CNTR; c.border = BORDER
-                        if w: ws.column_dimensions[get_column_letter(col)].width = w
-                        return c
-
-                    def sub(ws, row, col, val):
-                        c = ws.cell(row=row, column=col, value=val)
-                        c.font = SUB_FONT; c.fill = SUB_FILL
-                        c.alignment = LEFT; c.border = BORDER
-                        return c
-
-                    def inp(ws, row, col, val, fmt=None):
-                        c = ws.cell(row=row, column=col, value=val)
-                        c.font = BLU_FONT; c.fill = YLW_FILL
-                        c.border = BORDER; c.alignment = RGHT
-                        if fmt: c.number_format = fmt
-                        return c
-
-                    def lbl(ws, row, col, val):
-                        c = ws.cell(row=row, column=col, value=val)
-                        c.font = BLD_FONT; c.fill = LBL_FILL
-                        c.border = BORDER; c.alignment = LEFT
-                        return c
-
-                    def val_cell(ws, row, col, val, fmt=None, bold=False):
-                        c = ws.cell(row=row, column=col, value=val)
-                        c.font = BLD_FONT if bold else NRM_FONT
-                        c.border = BORDER; c.alignment = RGHT
-                        if fmt: c.number_format = fmt
-                        return c
-
-                    def note(ws, row, col, val):
-                        c = ws.cell(row=row, column=col, value=val)
-                        c.font = Font(name="Arial", size=8,
-                                      color="666666", italic=True)
-                        c.alignment = LEFT
-                        return c
-
-                    # Paramètres du titre
-                    p    = val_result.get("params", {}) or {}
-                    mods = val_result.get("modeles", {})
-                    pc   = val_result.get("prix_cible")
-                    fd   = fin_data.get(ticker, {})
-                    yr   = max(fd.keys()) if fd else "—"
-                    postes = fd.get(yr, {}) if fd else {}
-
-                    cours_act = np.nan
-                    if cours_df is not None and ticker in cours_df.columns:
-                        s = cours_df[ticker].dropna()
-                        if not s.empty:
-                            cours_act = float(s.iloc[-1])
-                    potentiel = (pc - cours_act)/cours_act if (
-                        pc and not np.isnan(cours_act) and cours_act > 0) else np.nan
-
-                    # ══════════════════════════════════════════════
-                    # FEUILLE 1 — SYNTHÈSE
-                    # ══════════════════════════════════════════════
-                    ws1 = wb.active
-                    ws1.title = "Synthèse"
-                    ws1.column_dimensions["A"].width = 32
-                    ws1.column_dimensions["B"].width = 22
-                    ws1.column_dimensions["C"].width = 22
-                    ws1.column_dimensions["D"].width = 28
-
-                    hdr(ws1, 1, 1, f"VALORISATION — {ticker}")
-                    ws1.merge_cells("A1:D1")
-                    ws1.cell(1,1).alignment = CNTR
-                    ws1.row_dimensions[1].height = 22
-
-                    lbl(ws1, 2, 1, "Ticker");     val_cell(ws1, 2, 2, ticker, bold=True)
-                    lbl(ws1, 3, 1, "Secteur");    val_cell(ws1, 3, 2, SECTOR_MAP.get(
-                                                    ticker.upper(), "—"))
-                    lbl(ws1, 4, 1, "Année réf."); val_cell(ws1, 4, 2, yr)
-                    lbl(ws1, 5, 1, "Cours actuel (FCFA)");
-                    val_cell(ws1, 5, 2,
-                             cours_act if not np.isnan(cours_act) else "—",
-                             fmt='#,##0', bold=True)
-                    lbl(ws1, 6, 1, "Prix cible combiné (FCFA)");
-                    val_cell(ws1, 6, 2,
-                             round(pc) if pc else "—",
-                             fmt='#,##0', bold=True)
-                    lbl(ws1, 7, 1, "Potentiel (%)")
-                    c = val_cell(ws1, 7, 2,
-                                 potentiel if not np.isnan(potentiel) else "—",
-                                 fmt='0.00%')
-                    if not np.isnan(potentiel) if isinstance(potentiel, float) else False:
-                        c.font = Font(bold=True, color="006400" if potentiel > 0
-                                      else "FF0000", name="Arial", size=9)
-
-                    # Paramètres calibrés automatiquement
-                    sub(ws1, 9, 1, "Paramètres calibrés automatiquement")
-                    ws1.merge_cells("A9:D9")
-                    hdr(ws1, 10, 1, "Paramètre", w=32)
-                    hdr(ws1, 10, 2, "Valeur", w=22)
-                    hdr(ws1, 10, 3, "Description", w=22)
-                    hdr(ws1, 10, 4, "Source", w=28)
-
-                    params_rows = [
-                        ("Beta (β)",         p.get("beta",1),    "0.000",
-                         "Régression OLS cours vs marché BRVM", "Cours historiques"),
-                        ("ke (taux actua.)",  p.get("ke",0),      "0.0%",
-                         "Rf + β × prime_risque", "CAPM / BCEAO"),
-                        ("kd (coût dette)",   p.get("kd",0),      "0.0%",
-                         "Intérêts / Dette financière", "États financiers"),
-                        ("WACC",              p.get("wacc",0),    "0.0%",
-                         "ke×E/(D+E) + kd×(1-t)×D/(D+E)", "Calculé"),
-                        ("g FCF",             p.get("g_fcf",0),   "0.0%",
-                         "CAGR Rex/RN historique", "États financiers"),
-                        ("g dividendes",      p.get("g_div",0),   "0.0%",
-                         "CAGR dividendes historiques", "Données de marché"),
-                        ("P/E cible",         p.get("pe_target",0),"0.0x",
-                         p.get("pe_method","—"), "Médiane historique"),
-                        ("P/B cible",         p.get("pb_target",0),"0.00x",
-                         p.get("pb_method","—"), "Médiane historique"),
-                        ("Taux IS effectif",  p.get("tax_rate",0),"0.0%",
-                         "Impôts / Rex observé", "États financiers"),
-                    ]
-                    for i, (pname, pval, fmt, desc, src) in enumerate(params_rows):
-                        r = 11 + i
-                        fill = ALT_FILL if i % 2 else PatternFill()
-                        for col in range(1, 5):
-                            ws1.cell(r, col).fill = fill
-                            ws1.cell(r, col).border = BORDER
-                        lbl(ws1, r, 1, pname)
-                        v = pval if isinstance(pval, str) else round(pval, 6)
-                        inp(ws1, r, 2, v,
-                            fmt="0.000" if "beta" in pname.lower() else
-                                "0.0%" if "%" in fmt else "0.00x")
-                        note(ws1, r, 3, desc)
-                        note(ws1, r, 4, src)
-
-                    # Prix par modèle
-                    r0 = 11 + len(params_rows) + 1
-                    sub(ws1, r0, 1, "Prix cibles par modèle")
-                    ws1.merge_cells(f"A{r0}:D{r0}")
-                    hdr(ws1, r0+1, 1, "Modèle")
-                    hdr(ws1, r0+1, 2, "Prix cible (FCFA)")
-                    hdr(ws1, r0+1, 3, "Poids dans combiné")
-                    hdr(ws1, r0+1, 4, "Potentiel vs cours")
-                    WEIGHTS = {"DDM": 0.20, "P/E": 0.30, "P/B": 0.20, "DCF": 0.30}
-                    pm = val_result.get("prix_modeles", {})
-                    for i, (mod, mprice) in enumerate(pm.items()):
-                        r = r0 + 2 + i
-                        ws1.cell(r, 1).fill = ALT_FILL if i%2 else PatternFill()
-                        lbl(ws1, r, 1, mod)
-                        val_cell(ws1, r, 2, round(mprice), fmt='#,##0', bold=True)
-                        val_cell(ws1, r, 3, WEIGHTS.get(mod, 0), fmt='0%')
-                        pot_m = (mprice - cours_act)/cours_act if (
-                            not np.isnan(cours_act) and cours_act > 0) else None
-                        c = val_cell(ws1, r, 4,
-                                     pot_m if pot_m is not None else "—",
-                                     fmt='+0.0%;-0.0%;"-"')
-                        if pot_m is not None:
-                            c.font = Font(bold=True,
-                                          color="006400" if pot_m > 0 else "FF0000",
-                                          name="Arial", size=9)
-
-                    # ══════════════════════════════════════════════
-                    # FEUILLE 2 — P/E
-                    # ══════════════════════════════════════════════
-                    ws2 = wb.create_sheet("Valorisation P-E")
-                    for col, width in [(1,35),(2,22),(3,25),(4,20)]:
-                        ws2.column_dimensions[get_column_letter(col)].width = width
-
-                    hdr(ws2, 1, 1, "MÉTHODE P/E RELATIF")
-                    ws2.merge_cells("A1:D1"); ws2.cell(1,1).alignment = CNTR
-
-                    pe_res = mods.get("P/E")
-                    note(ws2, 2, 1, "Formule : Prix cible = EPS × P/E_cible")
-                    note(ws2, 2, 2, "EPS = Résultat Net / Nombre d'actions")
-
-                    sub(ws2, 4, 1, "Données de base"); ws2.merge_cells("A4:D4")
-                    rows_pe = [
-                        ("Résultat Net (FCFA)", postes.get("rn","—"), '#,##0',
-                         "Source : États financiers"),
-                        ("Nb actions", data.get("nb_titres",{}).get(ticker,"—")
-                         if data else "—", '#,##0',
-                         "Source : Base de données SMF"),
-                        ("EPS (FCFA/action)", pe_res.get("eps","—")
-                         if pe_res else "—", '#,##0.00',
-                         "=Résultat Net / Nb actions"),
-                        ("P/E cible (x)", pe_res.get("pe_cible","—")
-                         if pe_res else "—", '0.0"x"',
-                         f"Méthode : {p.get('pe_method','—')}"),
-                        ("Prix cible P/E (FCFA)", pe_res.get("prix_cible","—")
-                         if pe_res else "—", '#,##0',
-                         "=EPS × P/E_cible"),
-                        ("Cours actuel (FCFA)", cours_act
-                         if not np.isnan(cours_act) else "—", '#,##0', "Cours de clôture"),
-                        ("Potentiel (%)", (pe_res["prix_cible"]-cours_act)/cours_act
-                         if pe_res and not np.isnan(cours_act) and cours_act>0 else "—",
-                         '+0.0%;-0.0%;"-"', "=(Prix cible - Cours) / Cours"),
-                    ]
-                    hdr(ws2, 5, 1, "Poste"); hdr(ws2, 5, 2, "Valeur")
-                    hdr(ws2, 5, 3, "Formule/Note"); hdr(ws2, 5, 4, "Source")
-                    for i, (pname, pval, fmt, src) in enumerate(rows_pe):
-                        r = 6 + i
-                        ws2.cell(r,1).fill = ALT_FILL if i%2 else PatternFill()
-                        lbl(ws2, r, 1, pname)
-                        v = round(pval, 4) if isinstance(pval, float) else pval
-                        inp(ws2, r, 2, v, fmt=fmt)
-                        note(ws2, r, 3, src.split("=")[1] if "=" in src else src)
-                        note(ws2, r, 4, src)
-
-                    # ══════════════════════════════════════════════
-                    # FEUILLE 3 — P/B
-                    # ══════════════════════════════════════════════
-                    ws3 = wb.create_sheet("Valorisation P-B")
-                    for col, width in [(1,35),(2,22),(3,25),(4,20)]:
-                        ws3.column_dimensions[get_column_letter(col)].width = width
-
-                    hdr(ws3, 1, 1, "MÉTHODE P/B (PRICE-TO-BOOK)")
-                    ws3.merge_cells("A1:D1"); ws3.cell(1,1).alignment = CNTR
-
-                    pb_res = mods.get("P/B")
-                    note(ws3, 2, 1, "Formule : Prix cible = BVPS × P/B_cible")
-                    note(ws3, 2, 2, "BVPS = Capitaux propres / Nombre d'actions")
-
-                    sub(ws3, 4, 1, "Données de base"); ws3.merge_cells("A4:D4")
-                    rows_pb = [
-                        ("Capitaux propres (FCFA)", postes.get("capitaux_propres",
-                         postes.get("capitaux_propres_mere","—")), '#,##0',
-                         "Source : États financiers"),
-                        ("Nb actions", data.get("nb_titres",{}).get(ticker,"—")
-                         if data else "—", '#,##0',
-                         "Source : Base de données SMF"),
-                        ("BVPS (FCFA/action)", pb_res.get("bvps","—")
-                         if pb_res else "—", '#,##0.00',
-                         "=Capitaux propres / Nb actions"),
-                        ("P/B cible (x)", pb_res.get("pb_cible","—")
-                         if pb_res else "—", '0.00"x"',
-                         f"Méthode : {p.get('pb_method','—')}"),
-                        ("Prix cible P/B (FCFA)", pb_res.get("prix_cible","—")
-                         if pb_res else "—", '#,##0',
-                         "=BVPS × P/B_cible"),
-                        ("Cours actuel (FCFA)", cours_act
-                         if not np.isnan(cours_act) else "—", '#,##0', "Cours de clôture"),
-                        ("Potentiel (%)", (pb_res["prix_cible"]-cours_act)/cours_act
-                         if pb_res and not np.isnan(cours_act) and cours_act>0 else "—",
-                         '+0.0%;-0.0%;"-"', "=(Prix cible - Cours) / Cours"),
-                    ]
-                    hdr(ws3, 5, 1, "Poste"); hdr(ws3, 5, 2, "Valeur")
-                    hdr(ws3, 5, 3, "Note"); hdr(ws3, 5, 4, "Source")
-                    for i, (pname, pval, fmt, src) in enumerate(rows_pb):
-                        r = 6 + i
-                        ws3.cell(r,1).fill = ALT_FILL if i%2 else PatternFill()
-                        lbl(ws3, r, 1, pname)
-                        v = round(pval, 4) if isinstance(pval, float) else pval
-                        inp(ws3, r, 2, v, fmt=fmt)
-                        note(ws3, r, 3, "")
-                        note(ws3, r, 4, src)
-
-                    # ══════════════════════════════════════════════
-                    # FEUILLE 4 — DCF
-                    # ══════════════════════════════════════════════
-                    ws4 = wb.create_sheet("Valorisation DCF")
-                    for col, width in [(1,35),(2,18),(3,18),(4,18),(5,18),(6,18),(7,18),(8,20)]:
-                        ws4.column_dimensions[get_column_letter(col)].width = width
-
-                    hdr(ws4, 1, 1, "DISCOUNTED CASH FLOW (DCF)")
-                    ws4.merge_cells("A1:H1"); ws4.cell(1,1).alignment = CNTR
-
-                    dcf_res = mods.get("DCF")
-                    note(ws4, 2, 1,
-                         "Formule : EV = Σ FCF_t/(1+WACC)^t + TV/(1+WACC)^n  |  "
-                         "TV = FCF_n×(1+g_TV)/(WACC-g_TV)  |  "
-                         "Prix cible = (EV - Dettes + Cash) / Nb actions")
-
-                    # Hypothèses
-                    sub(ws4, 4, 1, "Hypothèses"); ws4.merge_cells("A4:H4")
-                    hyp_rows = [
-                        ("WACC",         p.get("wacc",0),    "0.0%",
-                         "ke×E/(D+E) + kd×(1-t)×D/(D+E)"),
-                        ("ke",           p.get("ke",0),      "0.0%",
-                         "Rf(6%) + β×Prime(6%)"),
-                        ("kd",           p.get("kd",0),      "0.0%",
-                         "Intérêts / Dette — source : EF"),
-                        ("Beta (β)",     p.get("beta",1),    "0.000",
-                         "Régression OLS cours vs marché"),
-                        ("g FCF",        p.get("g_fcf",0),   "0.0%",
-                         "CAGR Rex/RN — source : EF"),
-                        ("g Terminale",  p.get("g_tv",
-                         dcf_res.get("g_tv",0.045) if dcf_res else 0.045), "0.0%",
-                         "Croissance PIB UEMOA long terme"),
-                        ("Horizon",      dcf_res.get("horizon",5)
-                         if dcf_res else 5, "0",
-                         "Années de projection explicite"),
-                        ("FCF0 (FCFA)",  round(dcf_res.get("fcf0_m",0))
-                         if dcf_res else "—", '#,##0',
-                         "FCF de base : Rex×(1-t)+Amort-CAPEX"),
-                    ]
-                    hdr(ws4, 5, 1, "Hypothèse"); hdr(ws4, 5, 2, "Valeur")
-                    hdr(ws4, 5, 3, "Description"); hdr(ws4, 5, 4, "Source")
-                    for i, (hname, hval, fmt, hdesc) in enumerate(hyp_rows):
-                        r = 6 + i
-                        ws4.cell(r,1).fill = ALT_FILL if i%2 else PatternFill()
-                        lbl(ws4, r, 1, hname)
-                        v = round(hval, 6) if isinstance(hval, float) else hval
-                        inp(ws4, r, 2, v, fmt=fmt)
-                        note(ws4, r, 3, hdesc)
-                        note(ws4, r, 4, "Calibrage auto")
-
-                    # Projection FCF
-                    if dcf_res and dcf_res.get("fcf_table"):
-                        r_fcf = 6 + len(hyp_rows) + 2
-                        sub(ws4, r_fcf, 1, "Projection des Free Cash Flows")
-                        ws4.merge_cells(f"A{r_fcf}:H{r_fcf}")
-                        hdr(ws4, r_fcf+1, 1, "Année")
-                        hdr(ws4, r_fcf+1, 2, "FCF projeté (FCFA)")
-                        hdr(ws4, r_fcf+1, 3, "Facteur actuali.")
-                        hdr(ws4, r_fcf+1, 4, "Valeur actuelle (FCFA)")
-                        for i, row_fcf in enumerate(dcf_res["fcf_table"]):
-                            r = r_fcf + 2 + i
-                            ws4.cell(r,1).fill = ALT_FILL if i%2 else PatternFill()
-                            val_cell(ws4, r, 1, row_fcf["annee"])
-                            val_cell(ws4, r, 2, round(row_fcf["fcf_m"]),
-                                     fmt='#,##0')
-                            val_cell(ws4, r, 3,
-                                     round(1/(1+p.get("wacc",0.12))**(i+1), 6),
-                                     fmt='0.000000')
-                            val_cell(ws4, r, 4, round(row_fcf["pv_m"]),
-                                     fmt='#,##0')
-
-                        # Résumé DCF
-                        r_sum = r_fcf + 2 + len(dcf_res["fcf_table"]) + 1
-                        sub(ws4, r_sum, 1, "Résumé valorisation DCF")
-                        ws4.merge_cells(f"A{r_sum}:D{r_sum}")
-                        dcf_sum = [
-                            ("PV des FCF projetés (FCFA)",
-                             round(dcf_res["pv_fcf_m"]), '#,##0'),
-                            ("Valeur terminale PV (FCFA)",
-                             round(dcf_res["pv_tv_m"]),  '#,##0'),
-                            ("Valeur d'entreprise EV (FCFA)",
-                             round(dcf_res["ev_m"]),     '#,##0'),
-                            ("Dette financière (FCFA)",
-                             round(abs(postes.get("dette_financiere",0))), '#,##0'),
-                            ("Prix cible DCF (FCFA)",
-                             round(dcf_res["prix_cible"]),  '#,##0'),
-                        ]
-                        for i, (dname, dval, fmt) in enumerate(dcf_sum):
-                            r = r_sum + 1 + i
-                            lbl(ws4, r, 1, dname)
-                            val_cell(ws4, r, 2, dval, fmt=fmt, bold=True)
-
-                    # ══════════════════════════════════════════════
-                    # FEUILLE 5 — DDM (si disponible)
-                    # ══════════════════════════════════════════════
-                    ddm_res = mods.get("DDM")
-                    if ddm_res:
-                        ws5 = wb.create_sheet("Valorisation DDM")
-                        for col, width in [(1,35),(2,22),(3,28)]:
-                            ws5.column_dimensions[get_column_letter(col)].width = width
-
-                        hdr(ws5, 1, 1, "DIVIDEND DISCOUNT MODEL (DDM)")
-                        ws5.merge_cells("A1:C1"); ws5.cell(1,1).alignment = CNTR
-                        note(ws5, 2, 1,
-                             "Formule Gordon-Shapiro : P = D1 / (ke - g)  |  "
-                             "D1 = D0 × (1 + g)")
-
-                        sub(ws5, 4, 1, "Paramètres DDM"); ws5.merge_cells("A4:C4")
-                        ddm_rows = [
-                            ("D0 — Dividende actuel (FCFA/action)",
-                             round(ddm_res.get("d0",0)), '#,##0.00',
-                             "Dernier dividende versé"),
-                            ("g — Croissance dividendes",
-                             ddm_res.get("g",0), '0.0%',
-                             "CAGR dividendes historiques"),
-                            ("D1 — Dividende projeté (FCFA)",
-                             round(ddm_res.get("d1",0),2), '#,##0.00',
-                             "=D0 × (1 + g)"),
-                            ("ke — Taux d'actualisation",
-                             ddm_res.get("ke",0), '0.0%',
-                             "CAPM : Rf + β × prime"),
-                            ("ke - g (spread)",
-                             ddm_res.get("ke",0)-ddm_res.get("g",0), '0.0%',
-                             "Doit être > 0"),
-                            ("Prix cible DDM (FCFA)",
-                             round(ddm_res.get("prix_cible",0)), '#,##0',
-                             "=D1 / (ke - g)"),
-                        ]
-                        hdr(ws5, 5, 1, "Paramètre")
-                        hdr(ws5, 5, 2, "Valeur")
-                        hdr(ws5, 5, 3, "Note")
-                        for i, (pname, pval, fmt, src) in enumerate(ddm_rows):
-                            r = 6 + i
-                            ws5.cell(r,1).fill = ALT_FILL if i%2 else PatternFill()
-                            lbl(ws5, r, 1, pname)
-                            v = round(pval, 6) if isinstance(pval, float) else pval
-                            inp(ws5, r, 2, v, fmt=fmt)
-                            note(ws5, r, 3, src)
-
-                    # Sauvegarder
-                    buf_xl = io.BytesIO()
-                    wb.save(buf_xl)
-                    buf_xl.seek(0)
-                    return buf_xl.getvalue()
-
-                # Génération à la demande — un seul fichier à la fois (performance)
-                dl_c1, dl_c2 = st.columns([2, 1])
-                with dl_c1:
-                    ticker_to_dl = st.selectbox(
-                        "Choisir un titre à télécharger",
-                        options=[r["Ticker"] for r in rows],
-                        key="ticker_excel_dl",
-                        label_visibility="collapsed",
-                    )
-                with dl_c2:
-                    if ticker_to_dl and ticker_to_dl in val:
-                        # Clé de cache : ticker + prix cible (change si recalcul)
-                        pc_key = val[ticker_to_dl].get("prix_cible", 0)
-                        cache_key = f"{ticker_to_dl}_{pc_key:.2f}" if pc_key else ticker_to_dl
-                        try:
-                            xl_bytes = build_valuation_excel_cached(
-                                ticker_to_dl, val[ticker_to_dl],
-                                fin_data, cours_df, cache_key
-                            )
-                            st.download_button(
-                                label=f"⬇️ Excel {ticker_to_dl}",
-                                data=xl_bytes,
-                                file_name=f"Valorisation_{ticker_to_dl}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument"
-                                     ".spreadsheetml.sheet",
-                                key=f"dl_btn_{ticker_to_dl}",
-                                use_container_width=True,
-                            )
-                        except Exception as e:
-                            st.error(f"Erreur : {e}")
-
-                # Graphique potentiels
-                st.markdown("**Potentiels de hausse / baisse par titre**")
-                df_chart = df_res[df_res["_pot_num"] != 0].copy()
-                colors_bar = ["#10b981" if v > 0 else "#ef4444" for v in df_chart["_pot_num"]]
+            df_chart = df_res[df_res["_pot"] > -9]
+            if not df_chart.empty:
                 fig_pot = go.Figure(go.Bar(
-                    x=df_chart["Ticker"],
-                    y=df_chart["_pot_num"],
-                    marker=dict(color=colors_bar, line=dict(width=0)),
-                    text=[f"{v:+.1f}%" for v in df_chart["_pot_num"]],
-                    textposition="outside",
-                    textfont=dict(size=9, color="#94a3b8"),
-                ))
-                fig_pot.add_hline(y=0, line_width=1, line_color="#475569")
-                fig_pot.add_hline(y=10,  line_dash="dash", line_color="#10b981", line_width=0.8)
-                fig_pot.add_hline(y=-10, line_dash="dash", line_color="#ef4444", line_width=0.8)
-                fig_pot.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color="#94a3b8", family="JetBrains Mono"), height=380,
-                    margin=dict(l=10, r=10, t=20, b=50),
-                    xaxis=dict(gridcolor="#1e2d45", tickangle=-45),
-                    yaxis=dict(gridcolor="#1e2d45", ticksuffix="%", title="Potentiel (%)"),
-                )
+                    x=df_chart["Ticker"], y=df_chart["_pot"] * 100,
+                    marker_color=["#10b981" if v > 0 else "#ef4444" for v in df_chart["_pot"]],
+                    text=[f"{v * 100:+.0f}%" for v in df_chart["_pot"]], textposition="outside"))
+                fig_pot.update_layout(**{**PLOT_LAYOUT, "height": 360,
+                                         "yaxis": dict(gridcolor="#1e2d45", ticksuffix="%", title="Potentiel (%)")})
                 st.plotly_chart(fig_pot, width="stretch")
 
-                # Répartition des signaux par secteur
-                if SECTOR_MAP:
-                    st.markdown("**📊 Potentiel moyen par secteur**")
-                    df_sect = df_res[df_res["_pot_num"] != 0].copy()
-                    df_sect["Secteur_map"] = df_sect["Ticker"].apply(
-                        lambda t: SECTOR_MAP.get(t.upper(), "Autre")
-                    )
-                    sect_avg = df_sect.groupby("Secteur_map")["_pot_num"].mean().sort_values(ascending=False)
-                    fig_sect = go.Figure(go.Bar(
-                        x=sect_avg.index,
-                        y=sect_avg.values,
-                        marker=dict(
-                            color=["#10b981" if v > 0 else "#ef4444" for v in sect_avg.values],
-                            line=dict(width=0)
-                        ),
-                        text=[f"{v:+.1f}%" for v in sect_avg.values],
-                        textposition="outside",
-                        textfont=dict(size=10, color="#94a3b8"),
-                    ))
-                    fig_sect.add_hline(y=0, line_width=1, line_color="#475569")
-                    fig_sect.update_layout(
-                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                        font=dict(color="#94a3b8", family="JetBrains Mono"), height=320,
-                        margin=dict(l=10, r=10, t=20, b=80),
-                        xaxis=dict(gridcolor="#1e2d45", tickangle=-30),
-                        yaxis=dict(gridcolor="#1e2d45", ticksuffix="%"),
-                    )
-                    st.plotly_chart(fig_sect, width="stretch")
+            st.markdown("**🔍 Détail par titre**")
+            td = st.selectbox("Choisir un titre", list(val.keys()), key="vc_detail")
+            r = val[td]
+            d1, d2, d3, d4 = st.columns(4)
+            d1.metric("Valeur fondamentale", f"{r.valeur:,.0f}" if r.valeur else "n.d.")
+            d2.metric("Potentiel", f"{r.potentiel * 100:+.1f}%" if r.potentiel is not None else "n.d.")
+            d3.metric("Coût des fonds propres", f"{r.k * 100:.1f}%" if r.k else "n.d.")
+            d4.metric("Bêta", f"{r.beta:.2f}" if r.beta else "n.d.")
+            st.dataframe(pd.DataFrame([{"Méthode": x.nom, "Valeur (FCFA)": f"{x.valeur:,.0f}", "Poids": x.poids,
+                                        "Détail": x.detail} for x in r.methodes]), width="stretch", hide_index=True)
+            if r.ecartees:
+                st.caption("Méthodes écartées : " + " ; ".join(f"{n} ({w})" for n, w in r.ecartees))
+            for n_ in r.notes:
+                st.caption(n_)
+            st.caption(f"Exercice de référence : {r.annee_ref or 'n.d.'} · bêta : {r.beta_source} · "
+                       f"PER cible : {r.pe_source or 'n.d.'} · P/B cible : {r.pb_source or 'n.d.'} · "
+                       f"date d'arrêté : {r.date_arrete:%d/%m/%Y}")
 
-                # Tableau transparence des paramètres calibrés
-                st.markdown("---")
-                st.markdown("**🔬 Transparence — Paramètres calibrés automatiquement**")
-                st.caption("Tous dérivés des données réelles · aucune saisie manuelle")
-                param_rows = []
-                for ticker_p, v_p in val.items():
-                    p = v_p.get("params")
-                    if not p:
-                        continue
-                    param_rows.append({
-                        "Ticker":    ticker_p,
-                        "Secteur":   SECTOR_MAP.get(ticker_p.upper(), p.get("secteur","—")),
-                        "Type":      "Banque" if p.get("is_bank") else "Société",
-                        "β":         f"{p.get('beta',1):.2f}",
-                        "ke":        f"{p.get('ke',0)*100:.1f}%",
-                        "kd":        f"{p.get('kd',0)*100:.1f}%",
-                        "WACC":      f"{p.get('wacc',0)*100:.1f}%",
-                        "g_FCF":     f"{p.get('g_fcf',0)*100:.1f}%",
-                        "g_div":     f"{p.get('g_div',0)*100:.1f}%",
-                        "P/E cible": f"{p.get('pe_target',0):.1f}x",
-                        "P/E méth.": p.get("pe_method","—"),
-                        "P/B cible": f"{p.get('pb_target',0):.2f}x",
-                        "Taux IS":   f"{p.get('tax_rate',0)*100:.1f}%",
-                        "Année":     str(p.get("annee_ref","—")),
-                    })
-                if param_rows:
-                    st.dataframe(pd.DataFrame(param_rows), width="stretch", hide_index=True)
+            buf = io.BytesIO()
+            with pd.ExcelWriter(buf, engine="openpyxl") as xw:
+                df_res.drop(columns=["_pot"]).to_excel(xw, sheet_name="Synthèse", index=False)
+                det = [{"Ticker": t, "Méthode": x.nom, "Valeur (FCFA)": round(x.valeur), "Poids": x.poids,
+                        "Détail": x.detail} for t, rr in val.items() for x in rr.methodes]
+                pd.DataFrame(det).to_excel(xw, sheet_name="Méthodes", index=False)
+                prm = [{"Ticker": t, "Date d'arrêté": rr.date_arrete, "Exercice": rr.annee_ref, "Cours": rr.cours,
+                        "Valeur fondamentale": rr.valeur, "Potentiel": rr.potentiel, "Bêta": rr.beta,
+                        "Source du bêta": rr.beta_source, "k": rr.k, "g": rr.g, "CMPC": rr.cmpc,
+                        "PER cible": rr.pe_cible, "P/B cible": rr.pb_cible, "DPA retenu": rr.dpa,
+                        "Exercice du DPA": rr.dpa_exercice,
+                        "Méthodes écartées": " ; ".join(f"{n} ({w})" for n, w in rr.ecartees),
+                        "Notes": " ".join(rr.notes), "Moteur": f"v{rr.version} ({vc.empreinte_moteur()})"}
+                       for t, rr in val.items()]
+                pd.DataFrame(prm).to_excel(xw, sheet_name="Paramètres", index=False)
+            st.download_button("⬇️ Exporter les valorisations (Excel)", buf.getvalue(),
+                               f"valorisations_{date_arrete:%Y%m%d}.xlsx",
+                               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-                # Détail par titre
-                st.markdown("**🔍 Détail par titre — DCF**")
-                ticker_detail = st.selectbox("Choisir un titre", [r["Ticker"] for r in rows])
-                if ticker_detail and ticker_detail in val:
-                    dcf_res = val[ticker_detail]["modeles"].get("DCF")
-                    if dcf_res and dcf_res.get("fcf_table"):
-                        st.markdown(f"**{ticker_detail} — Projection DCF** · WACC={dcf_res['wacc']:.2%} · g_FCF={dcf_res['g_fcf']:.2%} · g_TV={dcf_res['g_tv']:.2%}")
-                        dcf_df = pd.DataFrame(dcf_res["fcf_table"])
-                        dcf_df.columns = ["Année","FCF projeté (M FCFA)","PV (M FCFA)"]
-                        dcf_df = dcf_df.round(0)
-
-                        col_dcf1, col_dcf2 = st.columns(2)
-                        with col_dcf1:
-                            st.dataframe(dcf_df, width="stretch", hide_index=True)
-                        with col_dcf2:
-                            kd1, kd2, kd3 = st.columns(3)
-                            kd1.metric("PV FCF (M FCFA)", f"{dcf_res['pv_fcf_m']:,.0f}")
-                            kd2.metric("PV TV (M FCFA)", f"{dcf_res['pv_tv_m']:,.0f}")
-                            kd3.metric("EV (M FCFA)", f"{dcf_res['ev_m']:,.0f}")
-                            st.metric("Prix cible DCF (FCFA)", f"{dcf_res['prix_cible']:,.0f}")
-                    else:
-                        st.info("DCF non disponible pour ce titre.")
-
-                # Export
-                buf = io.BytesIO()
-                df_res[display_cols].to_excel(buf, index=False)
-                st.download_button("⬇️ Exporter valorisations (Excel)", buf.getvalue(),
-                                   "valorisation_BRVM.xlsx",
-                                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-# ══ BACKTESTING ════════════════════════════════════════════════
 with t9:
     st.markdown("<span class='pill'>Backtesting</span>"
                 "<p class='sh'>Performance historique de la stratégie multifactorielle</p>",

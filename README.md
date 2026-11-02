@@ -42,3 +42,17 @@ Un template téléchargeable est disponible dans l'onglet Données.
 ## Indices de référence
 - **BRVM Composite** (défaut)
 - **BRVM Prestige**
+
+## Moteur commun de valeur fondamentale (aligné avec l'application des fiches de valeur)
+
+L'onglet 📈 Valorisation utilise `valorisation_commune.py`, **fichier identique** à
+`fiche_valeur/valorisation_commune.py` de l'application CGF-Fiche-Valeurs. Les deux applications lisent la base SMF et le
+classeur des états financiers avec le même lecteur et calculent la valeur fondamentale avec la même méthode et les
+mêmes paramètres : à fichiers et date d'arrêté identiques, elles affichent la même valeur. L'empreinte du moteur est
+affichée dans l'onglet pour le vérifier ; toute modification du fichier doit être recopiée dans l'autre dépôt.
+
+Le classeur des états financiers est désormais lu par ce lecteur commun (unités du titre de chaque feuille, sous-totaux
+calculés par formule, part du groupe pour les comptes consolidés) ; une nouvelle publication remplace l'exercice
+correspondant dans la base au lieu de seulement la compléter. L'ancienne correction automatique des unités par le PER
+est abandonnée. La base SMF et le dernier classeur chargé sont conservés sur GitHub (`data/base_commune.json`,
+`data/etats_financiers_commun.json`).
