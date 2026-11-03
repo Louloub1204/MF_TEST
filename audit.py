@@ -26,7 +26,8 @@ print("=" * 60)
 # ── 1. SYNTAXE ──────────────────────────────────────────────
 print("\n── 1. Syntaxe Python ──")
 import py_compile, tempfile
-for fname in ["app.py", "fs_parser.py", "valuation_models.py"]:
+for fname in ["app.py", "fs_parser.py", "valuation_models.py",
+              "charia_screening.py", "ppt_report.py"]:
     try:
         py_compile.compile(fname, doraise=True)
         check(f"Syntaxe {fname}", True)
@@ -120,6 +121,7 @@ for key in REQUIRED_KEYS:
 print("\n── 6. Fichiers requis ──")
 REQUIRED_FILES = [
     "app.py", "fs_parser.py", "valuation_models.py",
+    "charia_screening.py", "ppt_report.py",
     "requirements.txt", "sectors.json",
 ]
 for fname in REQUIRED_FILES:
@@ -129,7 +131,7 @@ for fname in REQUIRED_FILES:
 print("\n── 7. requirements.txt ──")
 REQUIRED_PKGS = [
     "streamlit", "pandas", "numpy", "plotly",
-    "openpyxl", "scipy", "scikit-learn", "reportlab",
+    "openpyxl", "scipy", "scikit-learn", "reportlab", "python-pptx",
 ]
 with open("requirements.txt") as f:
     reqs = f.read().lower()
@@ -164,6 +166,10 @@ checks_8 = [
     ("github auto-save SMF",       "save_smf_data" in src),
     ("github auto-save fin_data",  "save_financial_db_github" in src),
     ("github startup load",        "github_loaded" in src),
+    ("ppt_report importé",         "PPT_AVAILABLE" in src),
+    ("build_ppt_report appelé",    "build_ppt_report" in src),
+    ("bouton génération PPT",      "rapport_ppt" in src),
+    ("TITRES_SLIDES exposé",       "TITRES_SLIDES" in src),
     ("parse_charia appelé",        "parse_charia" in src),
     ("charia_results session",     "charia_results" in src),
     ("Charia portefeuille tab7",   "get_charia_compatible_tickers" in src),

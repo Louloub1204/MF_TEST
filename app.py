@@ -34,6 +34,13 @@ except ImportError:
     GITHUB_STORAGE = False
 
 try:
+    from ppt_report import build_ppt_report, TITRES_SLIDES
+    PPT_AVAILABLE = True
+except ImportError:
+    PPT_AVAILABLE = False
+    TITRES_SLIDES = {}
+
+try:
     from charia_screening import (parse_screening_file as parse_charia,
                                    screen_all_from_fin_data,
                                    get_charia_label,
@@ -2426,13 +2433,127 @@ with st.sidebar:
                 st.error(f"Erreur génération PDF : {e}")
 
     if "rapport_pdf" in st.session_state and st.session_state.rapport_pdf:
-        import datetime
         today_str = datetime.date.today().strftime("%Y%m%d")
         st.download_button(
             label="⬇️ Télécharger le rapport",
             data=st.session_state.rapport_pdf,
             file_name=f"Rapport_SMF_BRVM_{today_str}.pdf",
             mime="application/pdf",
+            use_container_width=True,
+        )
+
+    # ── Présentation PowerPoint ────────────────────────────────
+    st.markdown("---")
+    st.markdown("**📊 Présentation PowerPoint**")
+
+    if not PPT_AVAILABLE:
+        st.caption("⚠️ ppt_report.py ou python-pptx indisponible")
+    elif not data:
+        st.caption("Chargez les données pour activer l'édition.")
+    else:
+        st.caption("Format « Stratégie Actions » · charte CGF Gestion")
+
+        with st.expander("⚙️ Paramètres de la présentation", expanded=False):
+            ppt_titre = st.text_input(
+                "Titre de la présentation",
+                value=f"La stratégie multifactorielle en "
+                      f"{datetime.date.today().year}",
+                key="ppt_titre")
+            ppt_periode = st.text_input(
+                "Mention de période",
+                value=f"situation au "
+                      f"{datetime.date.today().strftime('%d/%m/%Y')}",
+                key="ppt_periode")
+            ppt_slides = st.multiselect(
+                "Diapositives à inclure",
+                options=list(TITRES_SLIDES.keys()),
+                default=list(TITRES_SLIDES.keys()),
+                format_func=lambda n: f"{n}. {TITRES_SLIDES[n]}",
+                key="ppt_slides")
+
+        with st.expander("✍️ Commentaires analytiques", expanded=False):
+            st.caption("Laissez vide pour un commentaire généré "
+                       "automatiquement à partir des résultats. "
+                       "Format : un bloc par ligne, « Titre | Texte ».")
+            ppt_c_mom = st.text_area(
+                "Facteur Momentum", value="", height=80, key="ppt_c_mom",
+                placeholder="Rotation sectorielle | Les valeurs de consommation…")
+            ppt_c_liq = st.text_area(
+                "Facteur Liquidité", value="", height=80, key="ppt_c_liq")
+            ppt_c_ptf = st.text_area(
+                "Portefeuille cible", value="", height=80, key="ppt_c_ptf",
+                placeholder="Texte libre, sans séparateur.")
+            ppt_c_bt = st.text_area(
+                "Backtesting", value="", height=80, key="ppt_c_bt")
+            ppt_c_rsq = st.text_area(
+                "Risque & diversification", value="", height=80,
+                key="ppt_c_rsq")
+
+        if st.button("📊 Générer la présentation", type="primary",
+                     use_container_width=True):
+            with st.spinner("Édition de la présentation..."):
+                try:
+                    def _blocs(txt):
+                        """Convertit 'Titre | Texte' par ligne en liste de tuples."""
+                        out = []
+                        for ligne in (txt or "").strip().split("\n"):
+                            ligne = ligne.strip()
+                            if not ligne:
+                                continue
+                            if "|" in ligne:
+                                t, c = ligne.split("|", 1)
+                                out.append((t.strip(), c.strip()))
+                            else:
+                                out.append(("Commentaire", ligne))
+                        return out or None
+
+                    # Poids sectoriels du marché pour la comparaison
+                    sect_bm = None
+                    try:
+                        sect_bm = benchmark_sector_weights(
+                            SECTOR_MAP, data["cours"])
+                    except Exception:
+                        pass
+
+                    st.session_state.rapport_ppt = build_ppt_report(
+                        data=data,
+                        factor_results=st.session_state.factor_results,
+                        mf_scores=st.session_state.mf_scores,
+                        pw=st.session_state.pw,
+                        betas=betas,
+                        charia_results=st.session_state.charia_results,
+                        sector_map=SECTOR_MAP,
+                        backtest=st.session_state.get("bt_result"),
+                        corr_mat=st.session_state.get("corr_mat"),
+                        clusters=st.session_state.get("clusters"),
+                        sect_benchmark=sect_bm,
+                        poids_value=st.session_state.get("ppt_poids_value"),
+                        filtre_liquidite=st.session_state.get(
+                            "ppt_filtre_liquidite"),
+                        commentaires={
+                            "momentum":     _blocs(ppt_c_mom),
+                            "liquidite":    _blocs(ppt_c_liq),
+                            "portefeuille": (ppt_c_ptf or "").strip() or None,
+                            "backtest":     _blocs(ppt_c_bt),
+                            "risque":       _blocs(ppt_c_rsq),
+                        },
+                        titre=ppt_titre,
+                        periode=ppt_periode,
+                        slides=ppt_slides or None,
+                    )
+                    st.success(f"✅ {len(ppt_slides or TITRES_SLIDES)} "
+                               f"diapositives générées")
+                except Exception as e:
+                    st.error(f"Erreur génération PPT : {e}")
+
+    if st.session_state.get("rapport_ppt"):
+        today_str = datetime.date.today().strftime("%Y%m%d")
+        st.download_button(
+            label="⬇️ Télécharger la présentation",
+            data=st.session_state.rapport_ppt,
+            file_name=f"Strategie_Actions_BRVM_{today_str}.pptx",
+            mime="application/vnd.openxmlformats-officedocument"
+                 ".presentationml.presentation",
             use_container_width=True,
         )
 
@@ -2875,6 +2996,12 @@ with t1:
         st.warning(f"⚠️ Somme des poids = {ws:.2f} ≠ 1.0")
     else:
         st.success(f"✅ Somme des poids = {ws:.2f}")
+
+    # Mémorisé pour la présentation PowerPoint
+    st.session_state.ppt_poids_value = {
+        "B/P": w_bp, "E/P": w_eps, "FCF/P": w_fcf,
+        "CA/P": w_ca, "EBIT/P": w_ebit,
+    }
 
     if st.button("⚙️ Calculer le Facteur Value", type="primary"):
         metrics_v = ["B/P  (CP/n÷cours)", "E/P  (RN/n÷cours)",
@@ -3581,6 +3708,9 @@ with t7:
                     help="0% = pas de filtre", disabled=not liq_ok)
                 if not liq_ok:
                     st.caption("⚠️ Calculez le facteur Liquidité pour activer")
+                st.session_state.ppt_filtre_liquidite = (
+                    f"volume moyen ≥ {min_vol_pct}% du maximum de l'univers"
+                    if (liq_ok and min_vol_pct > 0) else None)
             with col_f2:
                 st.markdown("**② Filtre Score MF**")
                 top_pct = st.slider("Garder le top X% des scores MF", 10, 100, 60, 5,
