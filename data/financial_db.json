@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "last_updated": "2026-11-02T13:30:00",
+    "last_updated": "2026-11-03T13:51:22.268162",
     "tickers": [
       "BBGC",
       "BICB",
@@ -58,7 +58,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "pnb": 215101000000.0,
@@ -82,7 +82,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "pnb": 253286000000.0,
@@ -106,7 +106,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "pnb": 263207000000.0,
@@ -130,7 +130,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "pnb": 276048000000.0,
@@ -154,7 +154,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "SIBC": {
@@ -180,7 +180,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "pnb": 83542000000.0,
@@ -204,7 +204,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "pnb": 95571000000.0,
@@ -228,7 +228,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "pnb": 102763000000.0,
@@ -252,7 +252,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "pnb": 108663000000.0,
@@ -276,7 +276,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "NSBC": {
@@ -295,7 +295,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "pnb": 91002000000.0,
@@ -319,7 +319,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "pnb": 97819000000.0,
@@ -343,7 +343,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "pnb": 112928000000.0,
@@ -367,7 +367,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "ECOC": {
@@ -386,7 +386,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "pnb": 110189000000.0,
@@ -410,7 +410,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "pnb": 122316000000.0,
@@ -434,7 +434,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "pnb": 132725000000.0,
@@ -458,7 +458,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "BOAB": {
@@ -484,7 +484,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "pnb": 47832000000.0,
@@ -508,7 +508,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "pnb": 46527000000.0,
@@ -532,7 +532,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "pnb": 51274000000.0,
@@ -556,7 +556,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "BOAS": {
@@ -575,7 +575,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "pnb": 40503000000.0,
@@ -592,7 +592,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "pnb": 45426000000.0,
@@ -616,7 +616,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "pnb": 49666000000.0,
@@ -640,7 +640,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "pnb": 51926000000.0,
@@ -664,7 +664,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "BOABF": {
@@ -690,7 +690,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "pnb": 60576000000.0,
@@ -712,7 +712,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "pnb": 57490000000.0,
@@ -734,7 +734,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "pnb": 57820000000.0,
@@ -756,7 +756,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "BOAM": {
@@ -782,7 +782,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "pnb": 35307000000.0,
@@ -806,7 +806,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "pnb": 35519000000.0,
@@ -830,7 +830,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "pnb": 36159000000.0,
@@ -854,7 +854,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "pnb": 37996000000.0,
@@ -878,7 +878,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "PALC": {
@@ -900,7 +900,7 @@
         "type": "societe",
         "unite": "milliers FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "ca": 206244391000.0,
@@ -928,7 +928,7 @@
         "type": "societe",
         "unite": "milliers FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "ca": 172182502000.0,
@@ -956,7 +956,7 @@
         "type": "societe",
         "unite": "milliers FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "ca": 197629996000.0,
@@ -985,7 +985,7 @@
         "type": "societe",
         "unite": "milliers FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "SOGC": {
@@ -1007,7 +1007,7 @@
         "type": "societe",
         "unite": "milliers FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "ca": 93883932000.0,
@@ -1027,7 +1027,7 @@
         "type": "societe",
         "unite": "milliers FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "ca": 73448349000.0,
@@ -1055,7 +1055,7 @@
         "type": "societe",
         "unite": "milliers FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "ca": 89415277000.0,
@@ -1083,7 +1083,7 @@
         "type": "societe",
         "unite": "milliers FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "ca": 98979032000.0,
@@ -1111,7 +1111,7 @@
         "type": "societe",
         "unite": "milliers FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "SLBC": {
@@ -1133,7 +1133,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "ca": 281880000000.0,
@@ -1153,7 +1153,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "ca": 311395000000.0,
@@ -1173,7 +1173,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "ca": 309722000000.0,
@@ -1201,7 +1201,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "ca": 378123000000.0,
@@ -1229,7 +1229,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "BNBC": {
@@ -1259,7 +1259,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "ca": 51384000000.0,
@@ -1287,7 +1287,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "ca": 45955470400.0,
@@ -1315,7 +1315,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "ca": 45312422329.0,
@@ -1343,7 +1343,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "ca": 42454158321.0,
@@ -1371,7 +1371,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "NTLC": {
@@ -1384,7 +1384,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "ca": 206734071633.0,
@@ -1395,7 +1395,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "ca": 203618293047.0,
@@ -1423,7 +1423,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "ca": 220113267165.0,
@@ -1451,7 +1451,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "ca": 233261162741.0,
@@ -1479,7 +1479,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "SMBC": {
@@ -1509,7 +1509,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Énergie",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "ca": 276854000000.0,
@@ -1537,7 +1537,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Énergie",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "ca": 247646000000.0,
@@ -1547,7 +1547,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Énergie",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "ca": 229061000000.0,
@@ -1575,7 +1575,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Énergie",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "ca": 206740000000.0,
@@ -1603,7 +1603,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Énergie",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "STBC": {
@@ -1633,7 +1633,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "ca": 151133280425.0,
@@ -1661,7 +1661,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "ca": 169913796154.0,
@@ -1689,7 +1689,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "ca": 214312616965.0,
@@ -1717,7 +1717,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "ca": 268537063096.0,
@@ -1745,7 +1745,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "CIEC": {
@@ -1773,7 +1773,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Services publics",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "ca": 238854000000.0,
@@ -1799,7 +1799,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Services publics",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "ca": 257218000000.0,
@@ -1825,7 +1825,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Services publics",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "ca": 263294000000.0,
@@ -1853,7 +1853,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Services publics",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "ca": 302320000000.0,
@@ -1881,7 +1881,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Services publics",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "BICC": {
@@ -1900,7 +1900,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "pnb": 55506000000.0,
@@ -1924,7 +1924,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "pnb": 68063000000.0,
@@ -1948,7 +1948,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "pnb": 79563000000.0,
@@ -1972,7 +1972,293 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
+      }
+    },
+    "BBGC": {
+      "2021": {
+        "pnb": 35630000000.0,
+        "rbe": 20580000000.0,
+        "cout_risque": -1177000000.0,
+        "rex": 19403000000.0,
+        "rn": 15109000000.0,
+        "total_actif": 710359000000.0,
+        "cp": 53320000000.0,
+        "creances_clientele": 335481000000.0,
+        "depots_clientele": 530301000000.0,
+        "interets_charges": -9492000000.0,
+        "dettes_interbancaires": 85993000000.0,
+        "tresorerie_actif": 128353000000.0,
+        "capitaux_propres": 53320000000.0,
+        "tresorerie": 128353000000.0,
+        "ca": 35630000000.0,
+        "type": "banque",
+        "unite": "millions FCFA",
+        "secteur": "Services financiers",
+        "source": "moteur commun v1.1"
+      },
+      "2022": {
+        "pnb": 42384000000.0,
+        "rbe": 23086000000.0,
+        "cout_risque": -2274000000.0,
+        "rex": 20812000000.0,
+        "rn": 17479000000.0,
+        "total_actif": 908481000000.0,
+        "cp": 65690000000.0,
+        "creances_clientele": 450858000000.0,
+        "depots_clientele": 666068000000.0,
+        "interets_charges": -12978000000.0,
+        "dettes_interbancaires": 119729000000.0,
+        "tresorerie_actif": 125154000000.0,
+        "capitaux_propres": 65690000000.0,
+        "tresorerie": 125154000000.0,
+        "ca": 42384000000.0,
+        "type": "banque",
+        "unite": "millions FCFA",
+        "secteur": "Services financiers",
+        "source": "moteur commun v1.1"
+      },
+      "2023": {
+        "pnb": 49372000000.0,
+        "rbe": 26494000000.0,
+        "cout_risque": -2216000000.0,
+        "rex": 24278000000.0,
+        "rn": 19770000000.0,
+        "total_actif": 837295000000.0,
+        "cp": 76720000000.0,
+        "creances_clientele": 529260000000.0,
+        "depots_clientele": 685350000000.0,
+        "interets_charges": -15546000000.0,
+        "dettes_interbancaires": 34050000000.0,
+        "tresorerie_actif": 49182000000.0,
+        "capitaux_propres": 76720000000.0,
+        "tresorerie": 49182000000.0,
+        "ca": 49372000000.0,
+        "type": "banque",
+        "unite": "millions FCFA",
+        "secteur": "Services financiers",
+        "source": "moteur commun v1.1"
+      },
+      "2024": {
+        "pnb": 59116000000.0,
+        "rbe": 34306000000.0,
+        "cout_risque": -6406000000.0,
+        "rex": 27900000000.0,
+        "rn": 22792000000.0,
+        "total_actif": 1119509000000.0,
+        "cp": 90125000000.0,
+        "creances_clientele": 607539000000.0,
+        "depots_clientele": 892178000000.0,
+        "interets_charges": -18768000000.0,
+        "dettes_interbancaires": 84108000000.0,
+        "tresorerie_actif": 207826000000.0,
+        "capitaux_propres": 90125000000.0,
+        "tresorerie": 207826000000.0,
+        "ca": 59116000000.0,
+        "type": "banque",
+        "unite": "millions FCFA",
+        "secteur": "Services financiers",
+        "source": "moteur commun v1.1"
+      },
+      "2025": {
+        "pnb": 67824000000.0,
+        "rbe": 39441000000.0,
+        "cout_risque": -6804000000.0,
+        "rex": 32637000000.0,
+        "rn": 27197000000.0,
+        "total_actif": 1427415000000.0,
+        "cp": 105139000000.0,
+        "creances_clientele": 768574000000.0,
+        "depots_clientele": 1138119000000.0,
+        "interets_charges": -22015000000.0,
+        "dettes_interbancaires": 128033000000.0,
+        "tresorerie_actif": 204985000000.0,
+        "capitaux_propres": 105139000000.0,
+        "tresorerie": 204985000000.0,
+        "ca": 67824000000.0,
+        "type": "banque",
+        "unite": "millions FCFA",
+        "secteur": "Services financiers",
+        "source": "moteur commun v1.1"
+      }
+    },
+    "BICB": {
+      "2024": {
+        "pnb": 45330000000.0,
+        "charges_generales": -14469000000.0,
+        "rbe": 30861000000.0,
+        "cout_risque": -198000000.0,
+        "rex": 30663000000.0,
+        "rai": 30733000000.0,
+        "impots": -1675000000.0,
+        "rn": 29058000000.0,
+        "total_actif": 1516851000000.0,
+        "cp": 114620000000.0,
+        "creances_clientele": 838691000000.0,
+        "depots_clientele": 912439000000.0,
+        "interets_charges": -46926000000.0,
+        "tresorerie_actif": 30060000000.0,
+        "bpa": 503.0,
+        "capitaux_propres": 114620000000.0,
+        "tresorerie": 30060000000.0,
+        "eps": 503.0,
+        "ca": 45330000000.0,
+        "type": "banque",
+        "unite": "millions FCFA",
+        "secteur": "Services financiers",
+        "source": "moteur commun v1.1"
+      },
+      "2025": {
+        "pnb": 52804000000.0,
+        "charges_generales": -16434000000.0,
+        "rbe": 36370000000.0,
+        "cout_risque": 5075000000.0,
+        "rex": 41445000000.0,
+        "rai": 41445000000.0,
+        "impots": -5209000000.0,
+        "rn": 36236000000.0,
+        "total_actif": 1844600000000.0,
+        "cp": 135118000000.0,
+        "creances_clientele": 1151536000000.0,
+        "depots_clientele": 1181045000000.0,
+        "interets_charges": -59548000000.0,
+        "tresorerie_actif": 41067000000.0,
+        "bpa": 627.0,
+        "capitaux_propres": 135118000000.0,
+        "tresorerie": 41067000000.0,
+        "eps": 627.0,
+        "ca": 52804000000.0,
+        "type": "banque",
+        "unite": "millions FCFA",
+        "secteur": "Services financiers",
+        "source": "moteur commun v1.1"
+      }
+    },
+    "UNXC": {
+      "2021": {
+        "ca": 38191193639.0,
+        "va": 9558784245.0,
+        "ebe": 4035272434.0,
+        "dotations": -2686131735.0,
+        "rex": 1984939431.0,
+        "frais_financiers": -54452453.0,
+        "revenus_financiers": 76267343.0,
+        "resultat_financier": 14435110.0,
+        "rao": 1999374541.0,
+        "hao": 552300.0,
+        "impots": -599233952.0,
+        "rn": 1400692889.0,
+        "total_actif": 37292681535.0,
+        "cp": 22523379487.0,
+        "dettes_financieres": 1157557654.0,
+        "tresorerie_actif": 2424850873.0,
+        "capitaux_propres": 22523379487.0,
+        "dette_financiere": 1157557654.0,
+        "tresorerie": 2424850873.0,
+        "amortissements": -2686131735.0,
+        "interets_charges": -54452453.0,
+        "type": "societe",
+        "unite": "FCFA",
+        "secteur": "Consommation discrétionnaire",
+        "source": "moteur commun v1.1"
+      },
+      "2022": {
+        "ca": 36372536951.0,
+        "va": 6965646344.0,
+        "ebe": 1139499518.0,
+        "rex": -1212860306.0,
+        "resultat_financier": -102447036.0,
+        "rao": -1315307342.0,
+        "hao": 20632370.0,
+        "impots": -4000000.0,
+        "rn": -1298674972.0,
+        "total_actif": 39705901306.0,
+        "cp": 19824011626.0,
+        "dettes_financieres": 1202350710.0,
+        "tresorerie_actif": 1864107261.0,
+        "capitaux_propres": 19824011626.0,
+        "dette_financiere": 1202350710.0,
+        "tresorerie": 1864107261.0,
+        "type": "societe",
+        "unite": "FCFA",
+        "secteur": "Consommation discrétionnaire",
+        "source": "moteur commun v1.1"
+      },
+      "2023": {
+        "ca": 29686986976.0,
+        "va": 6391216101.0,
+        "ebe": 325938207.0,
+        "rex": -1804906501.0,
+        "resultat_financier": -25231009.0,
+        "rao": -1830137510.0,
+        "hao": 9695636.0,
+        "impots": -215050515.0,
+        "rn": -2035492389.0,
+        "total_actif": 38585032514.0,
+        "cp": 17800067105.0,
+        "dettes_financieres": 1221476629.0,
+        "tresorerie_actif": 1217209782.0,
+        "capitaux_propres": 17800067105.0,
+        "dette_financiere": 1221476629.0,
+        "tresorerie": 1217209782.0,
+        "type": "societe",
+        "unite": "FCFA",
+        "secteur": "Consommation discrétionnaire",
+        "source": "moteur commun v1.1"
+      },
+      "2024": {
+        "ca": 27333349555.0,
+        "va": 5413538756.0,
+        "ebe": -352217043.0,
+        "dotations": -2367129686.0,
+        "rex": -2136021358.0,
+        "frais_financiers": -109895473.0,
+        "revenus_financiers": 86749430.0,
+        "resultat_financier": -23146043.0,
+        "rao": -2159167401.0,
+        "hao": 5229499.0,
+        "impots": -35000000.0,
+        "rn": -2188937902.0,
+        "total_actif": 34241097739.0,
+        "cp": 15591475518.0,
+        "dettes_financieres": 946536663.0,
+        "tresorerie_actif": 2495089362.0,
+        "capitaux_propres": 15591475518.0,
+        "dette_financiere": 946536663.0,
+        "tresorerie": 2495089362.0,
+        "amortissements": -2367129686.0,
+        "interets_charges": -109895473.0,
+        "type": "societe",
+        "unite": "FCFA",
+        "secteur": "Consommation discrétionnaire",
+        "source": "moteur commun v1.1"
+      },
+      "2025": {
+        "ca": 29031727207.0,
+        "va": 6562923301.0,
+        "ebe": 1126739480.0,
+        "dotations": -2155366106.0,
+        "rex": -423608525.0,
+        "frais_financiers": -99238974.0,
+        "revenus_financiers": 86500082.0,
+        "resultat_financier": -12738892.0,
+        "rao": -436347417.0,
+        "hao": -152764052.0,
+        "impots": -35000000.0,
+        "rn": -624111470.0,
+        "total_actif": 31735934378.0,
+        "cp": 24619180792.0,
+        "dettes_financieres": 1023606969.0,
+        "tresorerie_actif": 3813464100.0,
+        "capitaux_propres": 24619180792.0,
+        "dette_financiere": 1023606969.0,
+        "tresorerie": 3813464100.0,
+        "amortissements": -2155366106.0,
+        "interets_charges": -99238974.0,
+        "type": "societe",
+        "unite": "FCFA",
+        "secteur": "Consommation discrétionnaire",
+        "source": "moteur commun v1.1"
       }
     },
     "SNTS": {
@@ -1989,7 +2275,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Télécommunications",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "ca": 1455048739000.0,
@@ -2004,7 +2290,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Télécommunications",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "ca": 1631560000000.0,
@@ -2020,7 +2306,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Télécommunications",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "ca": 1776443000000.0,
@@ -2047,7 +2333,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Télécommunications",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "ca": 1923122000000.0,
@@ -2074,7 +2360,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Télécommunications",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "TTLC": {
@@ -2093,7 +2379,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Énergie",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "ca": 573130000000.0,
@@ -2110,7 +2396,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Énergie",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "ca": 681001000000.0,
@@ -2135,7 +2421,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Énergie",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "ca": 621042000000.0,
@@ -2160,7 +2446,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Énergie",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "ca": 588709000000.0,
@@ -2185,7 +2471,7 @@
         "type": "societe",
         "unite": "millions FCFA",
         "secteur": "Énergie",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "STAC": {
@@ -2204,7 +2490,7 @@
         "type": "societe",
         "unite": "milliers FCFA",
         "secteur": "Industriels",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "ca": 14654197000.0,
@@ -2221,7 +2507,7 @@
         "type": "societe",
         "unite": "milliers FCFA",
         "secteur": "Industriels",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "ca": 9264509000.0,
@@ -2246,7 +2532,7 @@
         "type": "societe",
         "unite": "milliers FCFA",
         "secteur": "Industriels",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "ca": 1793360000.0,
@@ -2271,7 +2557,7 @@
         "type": "societe",
         "unite": "milliers FCFA",
         "secteur": "Industriels",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "ca": 3878254000.0,
@@ -2296,7 +2582,7 @@
         "type": "societe",
         "unite": "milliers FCFA",
         "secteur": "Industriels",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "TTLS": {
@@ -2326,7 +2612,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Énergie",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "ca": 477813063000.0,
@@ -2354,7 +2640,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Énergie",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "ca": 499194464606.0,
@@ -2382,7 +2668,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Énergie",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "ca": 484944861431.0,
@@ -2410,7 +2696,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Énergie",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "ca": 455209000000.0,
@@ -2430,7 +2716,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Énergie",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "PRSC": {
@@ -2460,7 +2746,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "ca": 70092374932.0,
@@ -2488,7 +2774,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "ca": 77878845847.0,
@@ -2514,7 +2800,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "ca": 74676306247.0,
@@ -2543,7 +2829,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "ca": 81126957415.0,
@@ -2572,7 +2858,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "NEIC": {
@@ -2602,7 +2888,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "ca": 8988063184.0,
@@ -2630,7 +2916,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "ca": 8525436230.0,
@@ -2658,7 +2944,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "ca": 6744255774.0,
@@ -2686,7 +2972,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "ca": 5139206354.0,
@@ -2714,7 +3000,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "SCRC": {
@@ -2744,7 +3030,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "ca": 68635110937.0,
@@ -2772,7 +3058,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "ca": 68134693800.0,
@@ -2800,7 +3086,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "ca": 87219126882.0,
@@ -2828,7 +3114,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "ca": 80568589451.0,
@@ -2856,7 +3142,7 @@
         "type": "societe",
         "unite": "FCFA",
         "secteur": "Consommation de base",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "ORAC": {
@@ -2872,7 +3158,7 @@
         "type": "societe",
         "unite": "milliards FCFA",
         "secteur": "Télécommunications",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "ca": 965025000000.0,
@@ -2886,7 +3172,7 @@
         "type": "societe",
         "unite": "milliards FCFA",
         "secteur": "Télécommunications",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "ca": 1016500000000.0,
@@ -2911,7 +3197,7 @@
         "type": "societe",
         "unite": "milliards FCFA",
         "secteur": "Télécommunications",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "ca": 1084099999999.9999,
@@ -2937,7 +3223,7 @@
         "type": "societe",
         "unite": "milliards FCFA",
         "secteur": "Télécommunications",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "ca": 1197100000000.0,
@@ -2963,7 +3249,7 @@
         "type": "societe",
         "unite": "milliards FCFA",
         "secteur": "Télécommunications",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     },
     "ETIT": {
@@ -2989,7 +3275,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2021": {
         "pnb": 974058000000.0,
@@ -3011,7 +3297,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2022": {
         "pnb": 1161428000000.0,
@@ -3035,7 +3321,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2023": {
         "pnb": 1251676000000.0,
@@ -3058,7 +3344,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2024": {
         "pnb": 1266559000000.0,
@@ -3082,7 +3368,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       },
       "2025": {
         "pnb": 1424261000000.0,
@@ -3106,293 +3392,7 @@
         "type": "banque",
         "unite": "millions FCFA",
         "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
-      }
-    },
-    "BBGC": {
-      "2021": {
-        "pnb": 35630000000.0,
-        "rbe": 20580000000.0,
-        "cout_risque": -1177000000.0,
-        "rex": 19403000000.0,
-        "rn": 15109000000.0,
-        "total_actif": 710359000000.0,
-        "cp": 53320000000.0,
-        "creances_clientele": 335481000000.0,
-        "depots_clientele": 530301000000.0,
-        "interets_charges": -9492000000.0,
-        "dettes_interbancaires": 85993000000.0,
-        "tresorerie_actif": 128353000000.0,
-        "capitaux_propres": 53320000000.0,
-        "tresorerie": 128353000000.0,
-        "ca": 35630000000.0,
-        "type": "banque",
-        "unite": "millions FCFA",
-        "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
-      },
-      "2022": {
-        "pnb": 42384000000.0,
-        "rbe": 23086000000.0,
-        "cout_risque": -2274000000.0,
-        "rex": 20812000000.0,
-        "rn": 17479000000.0,
-        "total_actif": 908481000000.0,
-        "cp": 65690000000.0,
-        "creances_clientele": 450858000000.0,
-        "depots_clientele": 666068000000.0,
-        "interets_charges": -12978000000.0,
-        "dettes_interbancaires": 119729000000.0,
-        "tresorerie_actif": 125154000000.0,
-        "capitaux_propres": 65690000000.0,
-        "tresorerie": 125154000000.0,
-        "ca": 42384000000.0,
-        "type": "banque",
-        "unite": "millions FCFA",
-        "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
-      },
-      "2023": {
-        "pnb": 49372000000.0,
-        "rbe": 26494000000.0,
-        "cout_risque": -2216000000.0,
-        "rex": 24278000000.0,
-        "rn": 19770000000.0,
-        "total_actif": 837295000000.0,
-        "cp": 76720000000.0,
-        "creances_clientele": 529260000000.0,
-        "depots_clientele": 685350000000.0,
-        "interets_charges": -15546000000.0,
-        "dettes_interbancaires": 34050000000.0,
-        "tresorerie_actif": 49182000000.0,
-        "capitaux_propres": 76720000000.0,
-        "tresorerie": 49182000000.0,
-        "ca": 49372000000.0,
-        "type": "banque",
-        "unite": "millions FCFA",
-        "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
-      },
-      "2024": {
-        "pnb": 59116000000.0,
-        "rbe": 34306000000.0,
-        "cout_risque": -6406000000.0,
-        "rex": 27900000000.0,
-        "rn": 22792000000.0,
-        "total_actif": 1119509000000.0,
-        "cp": 90125000000.0,
-        "creances_clientele": 607539000000.0,
-        "depots_clientele": 892178000000.0,
-        "interets_charges": -18768000000.0,
-        "dettes_interbancaires": 84108000000.0,
-        "tresorerie_actif": 207826000000.0,
-        "capitaux_propres": 90125000000.0,
-        "tresorerie": 207826000000.0,
-        "ca": 59116000000.0,
-        "type": "banque",
-        "unite": "millions FCFA",
-        "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
-      },
-      "2025": {
-        "pnb": 67824000000.0,
-        "rbe": 39441000000.0,
-        "cout_risque": -6804000000.0,
-        "rex": 32637000000.0,
-        "rn": 27197000000.0,
-        "total_actif": 1427415000000.0,
-        "cp": 105139000000.0,
-        "creances_clientele": 768574000000.0,
-        "depots_clientele": 1138119000000.0,
-        "interets_charges": -22015000000.0,
-        "dettes_interbancaires": 128033000000.0,
-        "tresorerie_actif": 204985000000.0,
-        "capitaux_propres": 105139000000.0,
-        "tresorerie": 204985000000.0,
-        "ca": 67824000000.0,
-        "type": "banque",
-        "unite": "millions FCFA",
-        "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
-      }
-    },
-    "BICB": {
-      "2024": {
-        "pnb": 45330000000.0,
-        "charges_generales": -14469000000.0,
-        "rbe": 30861000000.0,
-        "cout_risque": -198000000.0,
-        "rex": 30663000000.0,
-        "rai": 30733000000.0,
-        "impots": -1675000000.0,
-        "rn": 29058000000.0,
-        "total_actif": 1516851000000.0,
-        "cp": 114620000000.0,
-        "creances_clientele": 838691000000.0,
-        "depots_clientele": 912439000000.0,
-        "interets_charges": -46926000000.0,
-        "tresorerie_actif": 30060000000.0,
-        "bpa": 503.0,
-        "capitaux_propres": 114620000000.0,
-        "tresorerie": 30060000000.0,
-        "eps": 503.0,
-        "ca": 45330000000.0,
-        "type": "banque",
-        "unite": "millions FCFA",
-        "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
-      },
-      "2025": {
-        "pnb": 52804000000.0,
-        "charges_generales": -16434000000.0,
-        "rbe": 36370000000.0,
-        "cout_risque": 5075000000.0,
-        "rex": 41445000000.0,
-        "rai": 41445000000.0,
-        "impots": -5209000000.0,
-        "rn": 36236000000.0,
-        "total_actif": 1844600000000.0,
-        "cp": 135118000000.0,
-        "creances_clientele": 1151536000000.0,
-        "depots_clientele": 1181045000000.0,
-        "interets_charges": -59548000000.0,
-        "tresorerie_actif": 41067000000.0,
-        "bpa": 627.0,
-        "capitaux_propres": 135118000000.0,
-        "tresorerie": 41067000000.0,
-        "eps": 627.0,
-        "ca": 52804000000.0,
-        "type": "banque",
-        "unite": "millions FCFA",
-        "secteur": "Services financiers",
-        "source": "moteur commun v1.0"
-      }
-    },
-    "UNXC": {
-      "2021": {
-        "ca": 38191193639.0,
-        "va": 9558784245.0,
-        "ebe": 4035272434.0,
-        "dotations": -2686131735.0,
-        "rex": 1984939431.0,
-        "frais_financiers": -54452453.0,
-        "revenus_financiers": 76267343.0,
-        "resultat_financier": 14435110.0,
-        "rao": 1999374541.0,
-        "hao": 552300.0,
-        "impots": -599233952.0,
-        "rn": 1400692889.0,
-        "total_actif": 37292681535.0,
-        "cp": 22523379487.0,
-        "dettes_financieres": 1157557654.0,
-        "tresorerie_actif": 2424850873.0,
-        "capitaux_propres": 22523379487.0,
-        "dette_financiere": 1157557654.0,
-        "tresorerie": 2424850873.0,
-        "amortissements": -2686131735.0,
-        "interets_charges": -54452453.0,
-        "type": "societe",
-        "unite": "FCFA",
-        "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
-      },
-      "2022": {
-        "ca": 36372536951.0,
-        "va": 6965646344.0,
-        "ebe": 1139499518.0,
-        "rex": -1212860306.0,
-        "resultat_financier": -102447036.0,
-        "rao": -1315307342.0,
-        "hao": 20632370.0,
-        "impots": -4000000.0,
-        "rn": -1298674972.0,
-        "total_actif": 39705901306.0,
-        "cp": 19824011626.0,
-        "dettes_financieres": 1202350710.0,
-        "tresorerie_actif": 1864107261.0,
-        "capitaux_propres": 19824011626.0,
-        "dette_financiere": 1202350710.0,
-        "tresorerie": 1864107261.0,
-        "type": "societe",
-        "unite": "FCFA",
-        "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
-      },
-      "2023": {
-        "ca": 29686986976.0,
-        "va": 6391216101.0,
-        "ebe": 325938207.0,
-        "rex": -1804906501.0,
-        "resultat_financier": -25231009.0,
-        "rao": -1830137510.0,
-        "hao": 9695636.0,
-        "impots": -215050515.0,
-        "rn": -2035492389.0,
-        "total_actif": 38585032514.0,
-        "cp": 17800067105.0,
-        "dettes_financieres": 1221476629.0,
-        "tresorerie_actif": 1217209782.0,
-        "capitaux_propres": 17800067105.0,
-        "dette_financiere": 1221476629.0,
-        "tresorerie": 1217209782.0,
-        "type": "societe",
-        "unite": "FCFA",
-        "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
-      },
-      "2024": {
-        "ca": 27333349555.0,
-        "va": 5413538756.0,
-        "ebe": -352217043.0,
-        "dotations": -2367129686.0,
-        "rex": -2136021358.0,
-        "frais_financiers": -109895473.0,
-        "revenus_financiers": 86749430.0,
-        "resultat_financier": -23146043.0,
-        "rao": -2159167401.0,
-        "hao": 5229499.0,
-        "impots": -35000000.0,
-        "rn": -2188937902.0,
-        "total_actif": 34241097739.0,
-        "cp": 15591475518.0,
-        "dettes_financieres": 946536663.0,
-        "tresorerie_actif": 2495089362.0,
-        "capitaux_propres": 15591475518.0,
-        "dette_financiere": 946536663.0,
-        "tresorerie": 2495089362.0,
-        "amortissements": -2367129686.0,
-        "interets_charges": -109895473.0,
-        "type": "societe",
-        "unite": "FCFA",
-        "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
-      },
-      "2025": {
-        "ca": 29031727207.0,
-        "va": 6562923301.0,
-        "ebe": 1126739480.0,
-        "dotations": -2155366106.0,
-        "rex": -423608525.0,
-        "frais_financiers": -99238974.0,
-        "revenus_financiers": 86500082.0,
-        "resultat_financier": -12738892.0,
-        "rao": -436347417.0,
-        "hao": -152764052.0,
-        "impots": -35000000.0,
-        "rn": -624111470.0,
-        "total_actif": 31735934378.0,
-        "cp": 24619180792.0,
-        "dettes_financieres": 1023606969.0,
-        "tresorerie_actif": 3813464100.0,
-        "capitaux_propres": 24619180792.0,
-        "dette_financiere": 1023606969.0,
-        "tresorerie": 3813464100.0,
-        "amortissements": -2155366106.0,
-        "interets_charges": -99238974.0,
-        "type": "societe",
-        "unite": "FCFA",
-        "secteur": "Consommation discrétionnaire",
-        "source": "moteur commun v1.0"
+        "source": "moteur commun v1.1"
       }
     }
   }
